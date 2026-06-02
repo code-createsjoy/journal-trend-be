@@ -1,8 +1,8 @@
 package com.norman.swp391.mapper;
 
 import com.norman.swp391.dto.response.author.AuthorResponse;
-import com.norman.swp391.dto.response.paper.PaperDetailResponse;
-import com.norman.swp391.dto.response.paper.PaperResponse;
+import com.norman.swp391.dto.paper.PaperDetailResponse;
+import com.norman.swp391.dto.paper.PaperResponse;
 import com.norman.swp391.dto.response.topic.TopicResponse;
 import com.norman.swp391.entity.Author;
 import com.norman.swp391.entity.Paper;

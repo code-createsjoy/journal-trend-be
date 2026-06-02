@@ -1,4 +1,4 @@
-package com.norman.swp391.dto.response.common;
+package com.norman.swp391.dto.common;
 
 import java.util.List;
 import lombok.AllArgsConstructor;

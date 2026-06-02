@@ -1,19 +1,21 @@
-package com.norman.swp391.dto.response.paper;
+package com.norman.swp391.dto.paper;
 
+import com.norman.swp391.dto.response.author.AuthorResponse;
+import com.norman.swp391.dto.response.topic.TopicResponse;
 import com.norman.swp391.entity.enums.PaperStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import lombok.AllArgsConstructor;
+import java.util.List;
+
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 /**
- * Tóm tắt bài báo.
+ * Chi tiết bài báo.
  */
 @Data
 @Builder
-public class PaperResponse {
+public class PaperDetailResponse {
 
     private Long id;
     private String title;
@@ -29,6 +31,8 @@ public class PaperResponse {
     private String primarySource;
     private PaperStatus status;
     private LocalDateTime createdAt;
+    private List<TopicResponse> topics;
+    private List<AuthorResponse> authors;
 }
 
 
