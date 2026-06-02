@@ -1,8 +1,8 @@
 package com.norman.swp391.service.impl;
 
 import com.norman.swp391.dto.response.author.AuthorResponse;
-import com.norman.swp391.dto.response.common.PageResponse;
-import com.norman.swp391.dto.response.paper.PaperResponse;
+import com.norman.swp391.dto.common.PageResponse;
+import com.norman.swp391.dto.paper.PaperResponse;
 import com.norman.swp391.entity.Paper;
 import com.norman.swp391.entity.PaperAuthor;
 import com.norman.swp391.entity.enums.PaperStatus;

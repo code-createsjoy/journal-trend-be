@@ -11,6 +11,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -47,4 +49,12 @@ public class TopicTrend {
 
     @Column(name = "trend_score", nullable = false, precision = 10, scale = 2)
     private BigDecimal trendScore;
+
+    /** BR-50: tăng trưởng > 300% trong một tháng. */
+    @Column(name = "anomaly_flag", nullable = false)
+    @Builder.Default
+    private boolean anomalyFlag = false;
+
+    @Column(name = "anomaly_detected_at")
+    private LocalDateTime anomalyDetectedAt;
 }
