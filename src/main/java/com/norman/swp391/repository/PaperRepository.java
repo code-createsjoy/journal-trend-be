@@ -3,20 +3,26 @@ package com.norman.swp391.repository;
 import com.norman.swp391.entity.Paper;
 import com.norman.swp391.entity.enums.PaperReviewStatus;
 import com.norman.swp391.entity.enums.PaperStatus;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Kho truy cập thực thể bài báo.
  */
 public interface PaperRepository extends JpaRepository<Paper, Long> {
+    interface PaperJournalBackfillRow {
+        Long getId();
+        String getJournal();
+        Long getJournalRefId();
+    }
+
     /**
      * Tìm kiếm: findByDoiIgnoreCase.
      */
@@ -124,6 +130,16 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
 
     long countByReviewStatus(PaperReviewStatus reviewStatus);
 
+    @Query("""
+        SELECT p.id as id, p.journal as journal, p.journalRef.id as journalRefId
+        FROM Paper p
+        """)
+    List<PaperJournalBackfillRow> findAllForJournalBackfill();
+
+    @Modifying
+    @Query(value = "UPDATE papers SET journal_id = :journalId WHERE id = :paperId", nativeQuery = true)
+    int linkJournal(@Param("paperId") Long paperId, @Param("journalId") Long journalId);
+
     @Query(value = """
         SELECT COUNT(DISTINCT p.id) FROM papers p
         INNER JOIN paper_topics pt ON pt.paper_id = p.id
@@ -138,5 +154,5 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
         ORDER BY CASE WHEN p.reviewStatus = com.norman.swp391.entity.enums.PaperReviewStatus.PENDING_REVIEW THEN 0 ELSE 1 END,
                  p.id DESC
         """)
-    List<Paper> findNeedingMetadataRepair(Pageable pageable);
+    java.util.List<Paper> findNeedingMetadataRepair(org.springframework.data.domain.Pageable pageable);
 }

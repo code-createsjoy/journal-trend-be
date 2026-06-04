@@ -1,8 +1,8 @@
 package com.norman.swp391.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.research.trend.config.AppProperties;
-import com.research.trend.dto.common.ApiResponse;
+import com.norman.swp391.config.AppProperties;
+import com.norman.swp391.dto.common.ApiResponse;
 import io.github.bucket4j.Bucket;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

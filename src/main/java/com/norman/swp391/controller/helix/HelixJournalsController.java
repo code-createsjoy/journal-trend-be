@@ -1,14 +1,17 @@
 package com.norman.swp391.controller.helix;
 
-import com.norman.swp391.dto.helix.HelixDtos.HelixJournal;
 import com.norman.swp391.mapper.JournalMapper;
 import com.norman.swp391.repository.JournalRepository;
+import com.norman.swp391.dto.helix.HelixDtos.HelixJournal;
 import io.swagger.v3.oas.annotations.Hidden;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
  * API tạp chí cho Helix.
@@ -49,7 +52,7 @@ public class HelixJournalsController {
             return null;
         }
         var j = JournalMapper.toResponse(journal);
-        
+
         return new HelixJournal(
                 String.valueOf(j.getId()),
                 j.getName(),
