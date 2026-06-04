@@ -82,4 +82,16 @@ public class Paper {
     @Column(name = "review_status", nullable = false, length = 30)
     @Builder.Default
     private PaperReviewStatus reviewStatus = PaperReviewStatus.NONE;
+
+    @Column(name = "review_flagged_at")
+    private LocalDateTime reviewFlaggedAt;
+
+    @Column(name = "conflict_title", length = 1000, columnDefinition = "VARCHAR(1000)")
+    private String conflictTitle;
+
+    @Column(name = "conflict_abstract", columnDefinition = "VARCHAR(MAX)")
+    private String conflictAbstract;
+
+    @Column(name = "conflict_source", length = 50)
+    private String conflictSource;
 }

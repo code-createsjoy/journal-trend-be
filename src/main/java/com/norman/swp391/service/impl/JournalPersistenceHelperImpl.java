@@ -18,7 +18,7 @@ import org.springframework.util.StringUtils;
  */
 @Component
 @RequiredArgsConstructor
-class JournalPersistenceHelper {
+class JournalPersistenceHelperImpl {
 
     private final JournalRepository journalRepository;
     private final EntityManager entityManager;

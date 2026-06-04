@@ -16,7 +16,7 @@ import org.springframework.util.StringUtils;
 public class JournalServiceImpl implements JournalService {
 
     private final JournalRepository journalRepository;
-    private final JournalPersistenceHelper journalPersistenceHelper;
+    private final JournalPersistenceHelperImpl journalPersistenceHelperImpl;
 
     @Override
     /**
@@ -36,7 +36,7 @@ public class JournalServiceImpl implements JournalService {
         return journalRepository
                 .findFirstByNameNormalized(trimmed)
                 .or(() -> journalRepository.findByNameIgnoreCase(trimmed))
-                .orElseGet(() -> journalPersistenceHelper.saveIfAbsent(trimmed, issn, domain));
+                .orElseGet(() -> journalPersistenceHelperImpl.saveIfAbsent(trimmed, issn, domain));
     }
 
     /**
