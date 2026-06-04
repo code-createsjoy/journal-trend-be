@@ -2,7 +2,7 @@ package com.norman.swp391.service;
 
 import com.norman.swp391.dto.response.author.AuthorResponse;
 import com.norman.swp391.dto.common.PageResponse;
-import com.norman.swp391.dto.paper.PaperResponse;
+import com.norman.swp391.dto.response.paper.PaperResponse;
 import org.springframework.data.domain.Pageable;
 
 /**
