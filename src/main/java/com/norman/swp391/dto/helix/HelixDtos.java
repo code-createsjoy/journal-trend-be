@@ -43,6 +43,11 @@ public final class HelixDtos {
     public record HelixAuthorRef(String id, String name) {}
 
     /**
+     * Ref chủ đề.
+     */
+    public record HelixTopicRef(String id, String name) {}
+
+    /**
      * Bài Helix.
      */
     public record HelixPaper(
@@ -54,7 +59,7 @@ public final class HelixDtos {
             int year,
             int citations,
             double trendScore,
-            List<String> keywords,
+            List<HelixTopicRef> keywords,
             String category,
             double impactFactor,
             String doi,
@@ -224,7 +229,7 @@ public final class HelixDtos {
             int year,
             int citations,
             double trendScore,
-            List<String> keywords,
+            List<HelixTopicRef> keywords,
             String category,
             double impactFactor,
             String doi,
