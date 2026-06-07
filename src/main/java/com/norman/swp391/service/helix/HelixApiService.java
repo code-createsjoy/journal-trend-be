@@ -77,11 +77,12 @@ public class HelixApiService {
  * Đăng ký tài khoản mới.
  */
     public HelixAuthSession register(HelixRegisterRequest request) {
-        return toHelixSession(authService.register(RegisterRequest.builder()
+        UserResponse user = authService.register(RegisterRequest.builder()
                 .fullName(request.name())
                 .email(request.email())
                 .password(request.password())
-                .build()));
+                .build());
+        return new HelixAuthSession(toHelixUser(user), null);
     }
 
 /**

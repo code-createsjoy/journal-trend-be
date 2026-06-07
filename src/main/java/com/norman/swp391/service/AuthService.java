@@ -19,7 +19,7 @@ public interface AuthService {
 /**
  * Đăng ký tài khoản mới.
  */
-    AuthResponse register(RegisterRequest request);
+    UserResponse register(RegisterRequest request);
 
 /**
  * Đăng nhập và trả về token.

@@ -35,7 +35,7 @@ public class AuthController {
      * Đăng ký tài khoản mới.
      */
     @PostMapping("/register")
-    public ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+    public ApiResponse<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ApiResponse.ok("Registration successful", authService.register(request));
     }
 
