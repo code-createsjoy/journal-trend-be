@@ -77,11 +77,12 @@ public class HelixApiService {
  * Đăng ký tài khoản mới.
  */
     public HelixAuthSession register(HelixRegisterRequest request) {
-        return toHelixSession(authService.register(RegisterRequest.builder()
+        UserResponse user = authService.register(RegisterRequest.builder()
                 .fullName(request.name())
                 .email(request.email())
                 .password(request.password())
-                .build()));
+                .build());
+        return new HelixAuthSession(toHelixUser(user), null);
     }
 
 /**
@@ -519,8 +520,8 @@ public class HelixApiService {
         List<String> authors = refs.getOrDefault(paper.getId(), List.of()).stream()
                 .map(HelixAuthorRef::name)
                 .toList();
-        List<String> keywords = paperTopicRepository.findByPaperId(paper.getId()).stream()
-                .map(pt -> pt.getTopic().getName())
+        List<HelixTopicRef> keywords = paperTopicRepository.findByPaperId(paper.getId()).stream()
+                .map(pt -> new HelixTopicRef(String.valueOf(pt.getTopic().getId()), pt.getTopic().getName()))
                 .toList();
         return new HelixPendingReviewPaper(
                 String.valueOf(paper.getId()),
@@ -591,13 +592,15 @@ public class HelixApiService {
         List<String> authors = detail.getAuthors() != null
                 ? detail.getAuthors().stream().map(AuthorResponse::getName).toList()
                 : List.of();
-        List<String> keywords = detail.getTopics() != null
-                ? detail.getTopics().stream().map(TopicResponse::getName).toList()
+        List<HelixTopicRef> keywords = detail.getTopics() != null
+                ? detail.getTopics().stream()
+                        .map(t -> new HelixTopicRef(String.valueOf(t.getId()), t.getName()))
+                        .toList()
                 : List.of();
         int year = detail.getPublicationDate() != null
                 ? detail.getPublicationDate().getYear()
                 : LocalDate.now().getYear();
-        String category = keywords.isEmpty() ? "General" : keywords.get(0);
+        String category = keywords.isEmpty() ? "General" : keywords.get(0).name();
         List<HelixAuthorRef> refs = detail.getAuthors() != null
                 ? detail.getAuthors().stream()
                         .map(a -> new HelixAuthorRef(String.valueOf(a.getId()), a.getName()))
@@ -650,7 +653,7 @@ public class HelixApiService {
                 authorRefs);
     }
 
-    private record PaperTopicMeta(List<String> keywords, String category, double trendScore) {
+    private record PaperTopicMeta(List<HelixTopicRef> keywords, String category, double trendScore) {
         static PaperTopicMeta empty() {
             return new PaperTopicMeta(List.of(), "General", 0);
         }
@@ -675,15 +678,15 @@ public class HelixApiService {
         Map<Long, PaperTopicMeta> result = new HashMap<>();
         for (Long paperId : paperIds) {
             List<PaperTopic> links = topicsByPaper.getOrDefault(paperId, List.of());
-            List<String> keywords = links.stream()
-                    .map(pt -> pt.getTopic().getName())
+            List<HelixTopicRef> keywords = links.stream()
+                    .map(pt -> new HelixTopicRef(String.valueOf(pt.getTopic().getId()), pt.getTopic().getName()))
                     .distinct()
                     .toList();
             double trendScore = links.stream()
                     .mapToDouble(pt -> trendByTopicId.getOrDefault(pt.getTopic().getId(), 0.0))
                     .max()
                     .orElse(0);
-            String category = keywords.isEmpty() ? "General" : keywords.get(0);
+            String category = keywords.isEmpty() ? "General" : keywords.get(0).name();
             result.put(paperId, new PaperTopicMeta(keywords, category, round(trendScore)));
         }
         return result;

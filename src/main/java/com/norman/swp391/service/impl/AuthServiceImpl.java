@@ -25,6 +25,7 @@ import com.norman.swp391.repository.UserRepository;
 import com.norman.swp391.security.JwtTokenProvider;
 import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.AuthService;
+import com.norman.swp391.service.EmailService;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -54,13 +55,14 @@ public class AuthServiceImpl implements AuthService {
     private final AuthenticationManager authenticationManager;
     private final JavaMailSender mailSender;
     private final AppProperties appProperties;
+    private final EmailService emailService;
 
     @Override
     @Transactional
 /**
  * Đăng ký tài khoản mới.
  */
-    public AuthResponse register(RegisterRequest request) {
+    public UserResponse register(RegisterRequest request) {
         if (userRepository.existsByEmailIgnoreCase(request.getEmail())) {
             throw new BadRequestException("Email is already registered");
         }
@@ -72,7 +74,8 @@ public class AuthServiceImpl implements AuthService {
                 .status(UserStatus.ACTIVE)
                 .build();
         user = userRepository.save(user);
-        return buildAuthResponse(user);
+        emailService.sendRegistrationConfirmEmail(user.getEmail(), user.getFullName());
+        return UserMapper.toResponse(user);
     }
 
     @Override
