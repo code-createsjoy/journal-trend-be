@@ -89,11 +89,11 @@ public class AppProperties {
                 "machine learning",
                 "artificial intelligence",
                 "data science"));
-        private int maxPages = 2;
+        private int maxPages = 5;
         /** Cap papers saved per sync run. */
-        private int maxPapersPerRun = 100;
+        private int maxPapersPerRun = 1000;
         /** Only ingest works published on or after this date (ISO yyyy-MM-dd). */
-        private String fromPublicationDate = "2023-01-01";
+        private String fromPublicationDate = "2026-01-01";
         /** Papers committed per DB transaction during ingest (higher = faster, more memory). */
         private int ingestBatchSize = 25;
         /** Re-fetch metadata for rows missing publication date after ingest. */
