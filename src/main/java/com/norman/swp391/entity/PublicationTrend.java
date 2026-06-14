@@ -12,7 +12,6 @@ import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,22 +20,23 @@ import lombok.Setter;
 
 @Entity
 @Table(
-        name = "topic_trends",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"topic_id", "trend_year", "trend_month"}))
+        name = "publication_trends",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"keyword_id", "trend_year", "trend_month"}))
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class TopicTrend {
+public class PublicationTrend {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "trend_id")
+    private Long trendId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "topic_id", nullable = false)
-    private Topic topic;
+    @JoinColumn(name = "keyword_id", nullable = false)
+    private Keyword keyword;
 
     @Column(name = "trend_year", nullable = false)
     private int year;
@@ -47,14 +47,9 @@ public class TopicTrend {
     @Column(name = "paper_count", nullable = false)
     private int paperCount;
 
-    @Column(name = "trend_score", nullable = false, precision = 10, scale = 2)
-    private BigDecimal trendScore;
+    @Column(name = "delta_percent", nullable = false, precision = 10, scale = 2)
+    private BigDecimal deltaPercent;
 
-    /** BR-50: tăng trưởng > 300% trong một tháng. */
-    @Column(name = "anomaly_flag", nullable = false)
-    @Builder.Default
-    private boolean anomalyFlag = false;
-
-    @Column(name = "anomaly_detected_at")
-    private LocalDateTime anomalyDetectedAt;
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
 }

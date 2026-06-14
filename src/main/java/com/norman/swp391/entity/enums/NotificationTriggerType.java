@@ -2,6 +2,6 @@ package com.norman.swp391.entity.enums;
 
 public enum NotificationTriggerType {
     NEW_PAPER,
-    TRENDING_TOPIC,
+    TRENDING_KEYWORD,
     SYSTEM
 }

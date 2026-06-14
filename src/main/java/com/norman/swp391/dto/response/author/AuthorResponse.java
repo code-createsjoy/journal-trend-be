@@ -18,7 +18,8 @@ public class AuthorResponse {
     private String name;
     private String affiliation;
     private int citationCount;
-    private String openAlexId;
+    private String sourceType;
+    private String sourceIdentifier;
 }
 
 

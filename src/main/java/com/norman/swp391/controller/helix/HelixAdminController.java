@@ -7,7 +7,6 @@ import com.norman.swp391.dto.helix.HelixDtos.HelixSyncResult;
 import com.norman.swp391.dto.helix.HelixDtos.HelixUpdateApiSourceRequest;
 import com.norman.swp391.dto.request.admin.UpdateApiSourceRequest;
 import com.norman.swp391.dto.response.admin.ApiSourceResponse;
-import com.norman.swp391.dto.response.admin.TopicAnomalyResponse;
 import com.norman.swp391.dto.response.admin.TrendDemoStatsResponse;
 import com.norman.swp391.service.*;
 import com.norman.swp391.service.helix.HelixApiService;
@@ -30,9 +29,8 @@ public class HelixAdminController {
 
     private final HelixApiService helixApiService;
     private final ApiSourceService apiSourceService;
-    private final TopicTrendService topicTrendService;
+    private final KeywordTrendService keywordTrendService;
     private final PaperReviewService paperReviewService;
-    private final TopicAnomalyService topicAnomalyService;
     private final TrendDemoStatsService trendDemoStatsService;
     private final AppProperties appProperties;
     private final PaperMetadataRepairService paperMetadataRepairService;
@@ -74,17 +72,17 @@ public class HelixAdminController {
      */
     @PostMapping("/trends/recalculate")
     public HelixSyncResult recalculateTrends() {
-        topicTrendService.recalculateAll();
+        keywordTrendService.recalculateAll();
         int months = appProperties.getSync().getTrendBackfillMonths();
         if (months > 0) {
-            topicTrendService.backfillHistoricalMonths(months);
+            keywordTrendService.backfillHistoricalMonths(months);
         }
         return helixApiService.latestSyncStatus();
     }
 
     @PostMapping("/trends/backfill")
     public HelixSyncResult backfillTrends(@RequestParam(defaultValue = "12") int months) {
-        topicTrendService.backfillHistoricalMonths(months);
+        keywordTrendService.backfillHistoricalMonths(months);
         return helixApiService.latestSyncStatus();
     }
 
@@ -97,11 +95,6 @@ public class HelixAdminController {
     public HelixSyncResult repairMetadata(@RequestParam(defaultValue = "50") int limit) {
         int repaired = paperMetadataRepairService.repairFromOpenAlex(limit);
         return new HelixSyncResult(repaired, "SUCCESS", "Repaired " + repaired + " papers from OpenAlex");
-    }
-
-    @GetMapping("/anomalies")
-    public List<TopicAnomalyResponse> listAnomalies(@RequestParam(defaultValue = "20") int limit) {
-        return topicAnomalyService.listCurrentAnomalies(limit);
     }
 
     @PostMapping("/papers/review/expire-stale")

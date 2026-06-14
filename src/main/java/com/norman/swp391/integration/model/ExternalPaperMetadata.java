@@ -12,17 +12,18 @@ public record ExternalPaperMetadata(
         String doi,
         LocalDate publicationDate,
         Integer citationCount,
-        List<String> topics,
+        List<ExternalKeywordInfo> keywords,
         List<String> authors,
         String pdfUrl,
         String landingPageUrl,
         Boolean openAccess,
         String journal,
-        String openAlexId,
+        String sourceType,
+        String sourceIdentifier,
         List<ExternalAuthorInfo> authorDetails) {
 
     public ExternalPaperMetadata {
-        topics = topics == null ? List.of() : List.copyOf(topics);
+        keywords = keywords == null ? List.of() : List.copyOf(keywords);
         authors = authors == null ? List.of() : List.copyOf(authors);
         authorDetails = authorDetails == null ? List.of() : List.copyOf(authorDetails);
     }
@@ -36,26 +37,28 @@ public record ExternalPaperMetadata(
             String doi,
             LocalDate publicationDate,
             Integer citationCount,
-            List<String> topics,
+            List<ExternalKeywordInfo> keywords,
             List<String> authors,
             String pdfUrl,
             String landingPageUrl,
             Boolean openAccess,
             String journal,
-            String openAlexId) {
+            String sourceType,
+            String sourceIdentifier) {
         this(
                 title,
                 abstractText,
                 doi,
                 publicationDate,
                 citationCount,
-                topics,
+                keywords,
                 authors,
                 pdfUrl,
                 landingPageUrl,
                 openAccess,
                 journal,
-                openAlexId,
+                sourceType,
+                sourceIdentifier,
                 List.of());
     }
 }

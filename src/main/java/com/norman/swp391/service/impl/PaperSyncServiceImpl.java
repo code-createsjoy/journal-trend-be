@@ -5,14 +5,15 @@ import com.norman.swp391.dto.response.admin.SyncLogResponse;
 import com.norman.swp391.entity.Author;
 import com.norman.swp391.entity.Paper;
 import com.norman.swp391.entity.PaperAuthor;
-import com.norman.swp391.entity.PaperTopic;
+import com.norman.swp391.entity.PaperKeyword;
 import com.norman.swp391.entity.SyncLog;
-import com.norman.swp391.entity.Topic;
+import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.User;
 import com.norman.swp391.entity.enums.PaperReviewStatus;
 import com.norman.swp391.entity.enums.PaperStatus;
 import com.norman.swp391.entity.enums.SyncStatus;
 import com.norman.swp391.integration.model.ExternalAuthorInfo;
+import com.norman.swp391.integration.model.ExternalKeywordInfo;
 import com.norman.swp391.integration.model.ExternalPaperMetadata;
 import com.norman.swp391.integration.openalex.OpenAlexClient;
 import com.norman.swp391.integration.semanticscholar.SemanticScholarClient;
@@ -21,16 +22,17 @@ import com.norman.swp391.repository.AuthorRepository;
 import com.norman.swp391.repository.JournalRepository;
 import com.norman.swp391.repository.PaperAuthorRepository;
 import com.norman.swp391.repository.PaperRepository;
-import com.norman.swp391.repository.PaperTopicRepository;
+import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.repository.SyncLogRepository;
-import com.norman.swp391.repository.TopicRepository;
+import com.norman.swp391.repository.KeywordRepository;
 import com.norman.swp391.repository.UserRepository;
 import com.norman.swp391.service.ApiSourceService;
 import com.norman.swp391.service.JournalService;
 import com.norman.swp391.service.NotificationService;
 import com.norman.swp391.service.PaperReviewService;
 import com.norman.swp391.service.PaperSyncService;
-import com.norman.swp391.service.TopicTrendService;
+import com.norman.swp391.service.KeywordTrendService;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -58,8 +60,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
     private final OpenAlexClient openAlexClient;
     private final SemanticScholarClient semanticScholarClient;
     private final PaperRepository paperRepository;
-    private final TopicRepository topicRepository;
-    private final PaperTopicRepository paperTopicRepository;
+    private final KeywordRepository keywordRepository;
+    private final PaperKeywordRepository paperKeywordRepository;
     private final AuthorRepository authorRepository;
     private final PaperAuthorRepository paperAuthorRepository;
     private final SyncLogRepository syncLogRepository;
@@ -68,14 +70,11 @@ public class PaperSyncServiceImpl implements PaperSyncService {
     private final JournalService journalService;
     private final JournalRepository journalRepository;
     private final NotificationService notificationService;
-    private final TopicTrendService topicTrendService;
+    private final KeywordTrendService keywordTrendService;
     private final PaperReviewService paperReviewService;
     private final TransactionTemplate transactionTemplate;
 
     @Override
-/**
- * Xử lý nghiệp vụ: startSync.
- */
     public SyncLogResponse startSync(Long adminId) {
         expireStaleRunningSyncs();
         SyncLog running = findRunningWithAdmin();
@@ -103,9 +102,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
     @Override
     @Transactional
-/**
- * Xử lý nghiệp vụ: resetStaleRunningSyncs.
- */
     public void resetStaleRunningSyncs() {
         for (SyncLog sync : syncLogRepository.findByStatusWithAdmin(SyncStatus.RUNNING, PageRequest.of(0, 50))) {
             sync.setStatus(SyncStatus.FAILED);
@@ -118,9 +114,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
     @Override
     @Transactional
-/**
- * Lấy dữ liệu: getLatestSyncStatus.
- */
     public SyncLogResponse getLatestSyncStatus() {
         expireStaleRunningSyncs();
         var recent = syncLogRepository.findRecentWithAdmin(PageRequest.of(0, 1));
@@ -130,9 +123,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return SyncLogMapper.toResponse(recent.get(0));
     }
 
-/**
- * Xử lý nghiệp vụ: expireStaleRunningSyncs.
- */
     private void expireStaleRunningSyncs() {
         int staleMinutes = Math.max(1, appProperties.getSync().getStaleSyncMinutes());
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(staleMinutes);
@@ -146,17 +136,11 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         }
     }
 
-/**
- * Tìm kiếm: findRunningWithAdmin.
- */
     private SyncLog findRunningWithAdmin() {
         var running = syncLogRepository.findByStatusWithAdmin(SyncStatus.RUNNING, PageRequest.of(0, 1));
         return running.isEmpty() ? null : running.get(0);
     }
 
-/**
- * Xử lý nghiệp vụ: executeSync.
- */
     private void executeSync(Long syncLogId) {
         SyncLog sync = syncLogRepository.findById(syncLogId).orElse(null);
         if (sync == null) {
@@ -165,10 +149,14 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
         int totalFetched = 0;
         Set<Long> newPaperIds = new HashSet<>();
+        boolean openAlexEnabled = false;
+        boolean semanticScholarEnabled = false;
 
         try {
-            if (!apiSourceService.isEnabled("OpenAlex")) {
-                throw new IllegalStateException("OpenAlex source is disabled in admin config");
+            openAlexEnabled = apiSourceService.isEnabled("OpenAlex");
+            semanticScholarEnabled = apiSourceService.isEnabled("SemanticScholar");
+            if (!openAlexEnabled && !semanticScholarEnabled) {
+                throw new IllegalStateException("Both OpenAlex and SemanticScholar sources are disabled in admin config");
             }
 
             List<String> queries = appProperties.getSync().getSearchQueries();
@@ -182,40 +170,76 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             int ingestBatchSize = Math.max(1, appProperties.getSync().getIngestBatchSize());
             List<ExternalPaperMetadata> ingestBuffer = new ArrayList<>(ingestBatchSize);
 
+            List<String> enabledSources = new ArrayList<>();
+            if (openAlexEnabled) {
+                enabledSources.add("OpenAlex");
+            }
+            if (semanticScholarEnabled) {
+                enabledSources.add("SemanticScholar");
+            }
+
+            boolean semanticScholarRateLimited = false;
+
             outer:
             for (String query : queries) {
                 if (!StringUtils.hasText(query)) {
                     continue;
                 }
-                for (int page = 1; page <= maxPages; page++) {
-                    if (totalFetched >= maxPapers) {
-                        break outer;
-                    }
-                    List<ExternalPaperMetadata> batch;
-                    try {
-                        batch = openAlexClient.fetchWorks(query.trim(), page, fromDate);
-                    } catch (Exception ex) {
-                        log.warn("OpenAlex fetch failed for query '{}' page {}: {}", query, page, ex.getMessage());
+                for (String source : enabledSources) {
+                    if ("SemanticScholar".equals(source) && semanticScholarRateLimited) {
                         continue;
                     }
-                    if (batch.isEmpty()) {
-                        break;
-                    }
-                    for (ExternalPaperMetadata metadata : batch) {
+                    for (int page = 1; page <= maxPages; page++) {
                         if (totalFetched >= maxPapers) {
                             break outer;
                         }
-                        ExternalPaperMetadata processed = metadata;
-                        if (externalOnIngest && StringUtils.hasText(metadata.doi())) {
-                            processed = semanticScholarClient
-                                    .enrichByDoi(metadata.doi())
-                                    .map(enrich -> mergeMetadata(metadata, enrich))
-                                    .orElse(metadata);
+                        List<ExternalPaperMetadata> batch;
+                        try {
+                            if ("OpenAlex".equals(source)) {
+                                batch = openAlexClient.fetchWorks(query.trim(), page, fromDate);
+                            } else {
+                                batch = semanticScholarClient.fetchWorks(query.trim(), page);
+                            }
+                        } catch (org.springframework.web.client.HttpClientErrorException.TooManyRequests ex) {
+                            log.error("Semantic Scholar rate limit reached. Disabling Semantic Scholar for the remainder of this sync run.");
+                            semanticScholarRateLimited = true;
+                            break; // break the page loop for SemanticScholar
+                        } catch (Exception ex) {
+                            log.warn("{} fetch failed for query '{}' page {}: {}", source, query, page, ex.getMessage());
+                            continue;
                         }
-                        ingestBuffer.add(processed);
-                        if (ingestBuffer.size() >= ingestBatchSize) {
-                            totalFetched += flushIngest(ingestBuffer, newPaperIds, maxPapers - totalFetched);
-                            ingestBuffer.clear();
+                        if (batch.isEmpty()) {
+                            break;
+                        }
+                        for (ExternalPaperMetadata metadata : batch) {
+                            if (totalFetched >= maxPapers) {
+                                break outer;
+                            }
+
+                            // For Semantic Scholar, filter by publication date manually
+                            if ("SemanticScholar".equals(source) && StringUtils.hasText(fromDate)) {
+                                try {
+                                    LocalDate limitDate = LocalDate.parse(fromDate);
+                                    if (metadata.publicationDate() != null && metadata.publicationDate().isBefore(limitDate)) {
+                                        continue;
+                                    }
+                                } catch (Exception ex) {
+                                    // ignore date parse errors
+                                }
+                            }
+
+                            ExternalPaperMetadata processed = metadata;
+                            if ("OpenAlex".equals(source) && externalOnIngest && StringUtils.hasText(metadata.doi())) {
+                                processed = semanticScholarClient
+                                        .enrichByDoi(metadata.doi())
+                                        .map(enrich -> mergeMetadata(metadata, enrich))
+                                        .orElse(metadata);
+                            }
+                            ingestBuffer.add(processed);
+                            if (ingestBuffer.size() >= ingestBatchSize) {
+                                totalFetched += flushIngest(ingestBuffer, newPaperIds, maxPapers - totalFetched);
+                                ingestBuffer.clear();
+                            }
                         }
                     }
                 }
@@ -226,23 +250,33 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             }
 
             paperReviewService.expireStalePendingReviews();
-            topicTrendService.recalculateAll();
+            keywordTrendService.recalculateAll();
             int backfillMonths = appProperties.getSync().getTrendBackfillMonths();
             if (backfillMonths > 0) {
-                topicTrendService.backfillHistoricalMonths(backfillMonths);
+                keywordTrendService.backfillHistoricalMonths(backfillMonths);
             }
-            notificationService.notifyTrendingForFollowedTopics(topicTrendService.findTrendingTopics());
+            notificationService.notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords());
             notificationService.notifyNewPapersForSubscriptions(newPaperIds);
 
             sync.setStatus(SyncStatus.SUCCESS);
             sync.setPapersFetched(totalFetched);
-            apiSourceService.recordSyncResult("OpenAlex", true);
+            if (openAlexEnabled) {
+                apiSourceService.recordSyncResult("OpenAlex", true);
+            }
+            if (semanticScholarEnabled) {
+                apiSourceService.recordSyncResult("SemanticScholar", true);
+            }
             log.info("Sync #{} completed: {} papers", syncLogId, totalFetched);
         } catch (Exception ex) {
             log.error("Sync #{} failed", syncLogId, ex);
             sync.setStatus(SyncStatus.FAILED);
             sync.setErrorMessage(ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
-            apiSourceService.recordSyncResult("OpenAlex", false);
+            if (openAlexEnabled) {
+                apiSourceService.recordSyncResult("OpenAlex", false);
+            }
+            if (semanticScholarEnabled) {
+                apiSourceService.recordSyncResult("SemanticScholar", false);
+            }
         } finally {
             sync.setFinishedAt(LocalDateTime.now());
             if (sync.getPapersFetched() == 0 && sync.getStatus() == SyncStatus.SUCCESS) {
@@ -254,9 +288,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         }
     }
 
-/**
- * Xử lý nghiệp vụ: flushIngest.
- */
     private int flushIngest(List<ExternalPaperMetadata> batch, Set<Long> newPaperIds, int maxRemaining) {
         if (batch.isEmpty() || maxRemaining <= 0) {
             return 0;
@@ -276,9 +307,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return saved != null ? saved : 0;
     }
 
-/**
- * Xử lý nghiệp vụ: mergeMetadata.
- */
     private ExternalPaperMetadata mergeMetadata(ExternalPaperMetadata base, ExternalPaperMetadata enrich) {
         return new ExternalPaperMetadata(
                 coalesce(enrich.title(), base.title()),
@@ -286,30 +314,28 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 coalesce(enrich.doi(), base.doi()),
                 enrich.publicationDate() != null ? enrich.publicationDate() : base.publicationDate(),
                 enrich.citationCount() != null ? enrich.citationCount() : base.citationCount(),
-                mergeTopics(base.topics(), enrich.topics()),
+                mergeKeywords(base.keywords(), enrich.keywords()),
                 mergeAuthors(base.authors(), enrich.authors()),
                 coalesce(enrich.pdfUrl(), base.pdfUrl()),
                 coalesce(enrich.landingPageUrl(), base.landingPageUrl()),
                 enrich.openAccess() != null ? enrich.openAccess() : base.openAccess(),
                 coalesce(enrich.journal(), base.journal()),
-                coalesce(enrich.openAlexId(), base.openAlexId()),
+                coalesce(enrich.sourceType(), base.sourceType()),
+                coalesce(enrich.sourceIdentifier(), base.sourceIdentifier()),
                 mergeAuthorDetails(base.authorDetails(), enrich.authorDetails()));
     }
 
-/**
- * Xử lý nghiệp vụ: mergeAuthorDetails.
- */
     private List<ExternalAuthorInfo> mergeAuthorDetails(List<ExternalAuthorInfo> a, List<ExternalAuthorInfo> b) {
         Set<String> seen = new LinkedHashSet<>();
         List<ExternalAuthorInfo> merged = new ArrayList<>();
         for (ExternalAuthorInfo info : a) {
-            String key = StringUtils.hasText(info.openAlexId()) ? info.openAlexId() : info.name();
+            String key = StringUtils.hasText(info.sourceIdentifier()) ? info.sourceIdentifier() : info.name();
             if (seen.add(key)) {
                 merged.add(info);
             }
         }
         for (ExternalAuthorInfo info : b) {
-            String key = StringUtils.hasText(info.openAlexId()) ? info.openAlexId() : info.name();
+            String key = StringUtils.hasText(info.sourceIdentifier()) ? info.sourceIdentifier() : info.name();
             if (seen.add(key)) {
                 merged.add(info);
             }
@@ -317,19 +343,22 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return merged;
     }
 
-/**
- * Xử lý nghiệp vụ: mergeTopics.
- */
-    private List<String> mergeTopics(List<String> a, List<String> b) {
-        Set<String> set = new LinkedHashSet<>();
-        set.addAll(a);
-        set.addAll(b);
-        return new ArrayList<>(set);
+    private List<ExternalKeywordInfo> mergeKeywords(List<ExternalKeywordInfo> a, List<ExternalKeywordInfo> b) {
+        Set<String> seen = new LinkedHashSet<>();
+        List<ExternalKeywordInfo> merged = new ArrayList<>();
+        for (ExternalKeywordInfo info : a) {
+            if (seen.add(info.term().toLowerCase().trim())) {
+                merged.add(info);
+            }
+        }
+        for (ExternalKeywordInfo info : b) {
+            if (seen.add(info.term().toLowerCase().trim())) {
+                merged.add(info);
+            }
+        }
+        return merged;
     }
 
-/**
- * Xử lý nghiệp vụ: mergeAuthors.
- */
     private List<String> mergeAuthors(List<String> a, List<String> b) {
         Set<String> set = new LinkedHashSet<>();
         set.addAll(a);
@@ -337,16 +366,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return new ArrayList<>(set);
     }
 
-/**
- * Xử lý nghiệp vụ: coalesce.
- */
     private String coalesce(String preferred, String fallback) {
         return StringUtils.hasText(preferred) ? preferred : fallback;
     }
 
-/**
- * Tạo hoặc lưu: savePaperWithRelations.
- */
     private Long savePaperWithRelations(ExternalPaperMetadata metadata) {
         if (!StringUtils.hasText(metadata.title())) {
             return null;
@@ -354,7 +377,16 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         if (metadata.publicationDate() == null) {
             return null;
         }
-        if (!StringUtils.hasText(metadata.doi()) && !StringUtils.hasText(metadata.openAlexId())) {
+        if (!StringUtils.hasText(metadata.doi()) && !StringUtils.hasText(metadata.sourceIdentifier())) {
+            return null;
+        }
+        if (!StringUtils.hasText(metadata.journal())) {
+            return null;
+        }
+        if (metadata.keywords() == null || metadata.keywords().isEmpty()) {
+            return null;
+        }
+        if (metadata.authors() == null || metadata.authors().isEmpty()) {
             return null;
         }
         Optional<Paper> existing = findExistingPaper(metadata);
@@ -374,10 +406,11 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             paper.setPdfUrl(metadata.pdfUrl());
             paper.setSourceUrl(metadata.landingPageUrl());
             paper.setOpenAccess(metadata.openAccess() != null ? metadata.openAccess() : paper.isOpenAccess());
-            if (StringUtils.hasText(metadata.openAlexId())) {
-                paper.setOpenAlexId(metadata.openAlexId());
+            if (StringUtils.hasText(metadata.sourceIdentifier())) {
+                paper.setSourceType(metadata.sourceType());
+                paper.setSourceIdentifier(metadata.sourceIdentifier());
             }
-            paper.setPrimarySource("OPENALEX");
+            paper.setPrimarySource(metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
             paper.setStatus(PaperStatus.ACTIVE);
             paper.setReviewStatus(PaperReviewStatus.NONE);
             if (paper.getCreatedAt() == null) {
@@ -385,20 +418,20 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             }
             paper = paperRepository.save(paper);
         } else {
-            paper.setPrimarySource("OPENALEX");
+            paper.setPrimarySource(metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
             paper.setStatus(PaperStatus.ACTIVE);
-            paperReviewService.applyIncomingMetadata(paper, metadata, "OPENALEX");
+            
+            paperReviewService.applyIncomingMetadata(paper, metadata, metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
             paper = paperRepository.findById(paper.getId()).orElse(paper);
         }
 
-        // Link topics/authors before journal (REQUIRES_NEW journal tx can clear parent session).
-        linkTopics(paper, metadata.topics());
+        linkKeywords(paper, metadata.keywords());
         linkAuthors(paper, metadata);
 
         if (StringUtils.hasText(metadata.journal())) {
             paper = paperRepository.findById(paper.getId()).orElse(paper);
-            String domain = metadata.topics() != null && !metadata.topics().isEmpty()
-                    ? metadata.topics().get(0)
+            String domain = metadata.keywords() != null && !metadata.keywords().isEmpty()
+                    ? metadata.keywords().get(0).domain()
                     : "General";
             try {
                 var journalEntity = journalService.findOrCreate(metadata.journal(), null, domain);
@@ -416,14 +449,12 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return isNew ? paper.getId() : null;
     }
 
-/**
- * Tìm kiếm: findExistingPaper.
- */
     private Optional<Paper> findExistingPaper(ExternalPaperMetadata metadata) {
-        if (StringUtils.hasText(metadata.openAlexId())) {
-            Optional<Paper> byOx = paperRepository.findByOpenAlexIdIgnoreCase(metadata.openAlexId());
-            if (byOx.isPresent()) {
-                return byOx;
+        if (StringUtils.hasText(metadata.sourceIdentifier()) && StringUtils.hasText(metadata.sourceType())) {
+            Optional<Paper> bySource = paperRepository.findBySourceTypeAndSourceIdentifierIgnoreCase(
+                    metadata.sourceType(), metadata.sourceIdentifier());
+            if (bySource.isPresent()) {
+                return bySource;
             }
         }
         if (StringUtils.hasText(metadata.doi())) {
@@ -432,9 +463,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return Optional.empty();
     }
 
-/**
- * Xử lý nghiệp vụ: newPaper.
- */
     private Paper newPaper() {
         return Paper.builder()
                 .createdAt(LocalDateTime.now())
@@ -445,36 +473,37 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 .build();
     }
 
-/**
- * Xử lý nghiệp vụ: linkTopics.
- */
-    private void linkTopics(Paper paper, List<String> topicNames) {
-        if (topicNames == null) {
+    private void linkKeywords(Paper paper, List<ExternalKeywordInfo> keywords) {
+        if (keywords == null) {
             return;
         }
-        for (String name : topicNames) {
-            if (!StringUtils.hasText(name)) {
+        for (ExternalKeywordInfo info : keywords) {
+            if (!StringUtils.hasText(info.term())) {
                 continue;
             }
-            String trimmed = name.trim();
-            Topic topic = topicRepository
-                    .findByNameIgnoreCase(trimmed)
-                    .orElseGet(() -> topicRepository.save(Topic.builder()
-                            .name(trimmed)
-                            .description("Imported from OpenAlex sync")
-                            .build()));
+            String term = info.term().trim();
+            String domain = StringUtils.hasText(info.domain()) ? info.domain().trim() : "General";
+            Keyword keyword = keywordRepository.findByTermIgnoreCase(term).orElse(null);
+            if (keyword == null) {
+                keyword = keywordRepository.save(Keyword.builder()
+                        .term(term)
+                        .domain(domain)
+                        .createdAt(LocalDateTime.now())
+                        .build());
+            } else if ("General".equalsIgnoreCase(keyword.getDomain()) && !"General".equalsIgnoreCase(domain)) {
+                keyword.setDomain(domain);
+                keyword = keywordRepository.save(keyword);
+            }
 
-            boolean exists = paperTopicRepository.findByPaperId(paper.getId()).stream()
-                    .anyMatch(pt -> pt.getTopic().getId().equals(topic.getId()));
+            final Keyword finalKeyword = keyword;
+            boolean exists = paperKeywordRepository.findByPaperId(paper.getId()).stream()
+                    .anyMatch(pk -> pk.getKeyword().getKeywordId().equals(finalKeyword.getKeywordId()));
             if (!exists) {
-                paperTopicRepository.save(PaperTopic.builder().paper(paper).topic(topic).build());
+                paperKeywordRepository.save(PaperKeyword.builder().paper(paper).keyword(finalKeyword).build());
             }
         }
     }
 
-/**
- * Xử lý nghiệp vụ: linkAuthors.
- */
     private void linkAuthors(Paper paper, ExternalPaperMetadata metadata) {
         if (metadata.authorDetails() != null && !metadata.authorDetails().isEmpty()) {
             for (ExternalAuthorInfo info : metadata.authorDetails()) {
@@ -489,13 +518,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             if (!StringUtils.hasText(name)) {
                 continue;
             }
-            linkOneAuthor(paper, new ExternalAuthorInfo(name.trim(), null, ""));
+            linkOneAuthor(paper, new ExternalAuthorInfo(name.trim(), "LOCAL", null, ""));
         }
     }
 
-/**
- * Xử lý nghiệp vụ: linkOneAuthor.
- */
     private void linkOneAuthor(Paper paper, ExternalAuthorInfo info) {
         if (!StringUtils.hasText(info.name())) {
             return;
@@ -504,8 +530,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         String affiliation = info.affiliation() != null ? info.affiliation().trim() : "";
 
         Author author = null;
-        if (StringUtils.hasText(info.openAlexId())) {
-            author = authorRepository.findByOpenAlexIdIgnoreCase(info.openAlexId()).orElse(null);
+        if (StringUtils.hasText(info.sourceIdentifier()) && StringUtils.hasText(info.sourceType())) {
+            author = authorRepository.findBySourceTypeAndSourceIdentifierIgnoreCase(info.sourceType(), info.sourceIdentifier()).orElse(null);
         }
         if (author == null) {
             author = authorRepository
@@ -517,10 +543,13 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                     .name(trimmed)
                     .affiliation(affiliation)
                     .citationCount(0)
+                    .sourceType(info.sourceType())
+                    .sourceIdentifier(info.sourceIdentifier())
                     .build());
         } else {
-            if (StringUtils.hasText(info.openAlexId())) {
-                author.setOpenAlexId(info.openAlexId());
+            if (StringUtils.hasText(info.sourceIdentifier())) {
+                author.setSourceType(info.sourceType());
+                author.setSourceIdentifier(info.sourceIdentifier());
             }
             if (StringUtils.hasText(affiliation)) {
                 author.setAffiliation(affiliation);

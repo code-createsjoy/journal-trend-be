@@ -29,4 +29,14 @@ public interface JournalRepository extends JpaRepository<Journal, Long> {
 
     @Query("SELECT j FROM Journal j WHERE :q IS NULL OR LOWER(j.name) LIKE LOWER(CONCAT('%', :q, '%'))")
     Page<Journal> search(@Param("q") String q, Pageable pageable);
+
+    @Query("""
+        SELECT j.id, j.name, j.impactFactor, j.domain, COUNT(p.id)
+        FROM Paper p
+        JOIN p.journalRef j
+        WHERE p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        GROUP BY j.id, j.name, j.impactFactor, j.domain
+        ORDER BY COUNT(p.id) DESC
+        """)
+    java.util.List<Object[]> findTopJournalsByPaperCount(org.springframework.data.domain.Pageable pageable);
 }

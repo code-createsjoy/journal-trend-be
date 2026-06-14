@@ -18,7 +18,7 @@ public class SystemStatsResponse {
     private long activeUsers;
     private long lockedUsers;
     private long totalPapers;
-    private long totalTopics;
+    private long totalKeywords;
     private long totalAuthors;
     private long totalCollections;
     private long lastSyncPapersFetched;

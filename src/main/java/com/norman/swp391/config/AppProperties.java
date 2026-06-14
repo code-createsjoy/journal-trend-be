@@ -80,7 +80,7 @@ public class AppProperties {
     public static class Sync {
         private String cron = "0 0 2 * * *";
         private boolean onStartup = true;
-        private int minTopicPapers = 5;
+        private int minKeywordPapers = 5;
         private int trendingThresholdPercent = 15;
         private int trendingConsecutiveMonths = 3;
         /** OpenAlex search terms — multiple queries broaden topic coverage for trends. */
@@ -114,8 +114,8 @@ public class AppProperties {
         private int httpReadTimeoutMs = 30_000;
         /** Retries per OpenAlex HTTP call (transient failures). */
         private int openAlexRetryAttempts = 3;
-        /** BR-55: tối đa topic follow / user. */
-        private int maxFollowTopicsPerUser = 20;
+        /** BR-55: tối đa keyword follow / user. */
+        private int maxFollowKeywordsPerUser = 20;
         /** BR-56: tối đa journal follow / user. */
         private int maxFollowJournalsPerUser = 10;
         /** BR-57: tối đa bài lưu (bookmark) / user (tất cả collections). */

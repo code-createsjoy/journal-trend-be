@@ -4,12 +4,10 @@ import com.norman.swp391.dto.common.ApiResponse;
 import com.norman.swp391.dto.request.admin.PaperReviewOverrideRequest;
 import com.norman.swp391.dto.response.admin.PaperReviewResponse;
 import com.norman.swp391.dto.response.admin.SyncLogResponse;
-import com.norman.swp391.dto.response.admin.TopicAnomalyResponse;
 import com.norman.swp391.entity.enums.PaperReviewStatus;
 import com.norman.swp391.service.PaperReviewService;
 import com.norman.swp391.dto.response.admin.TrendDemoStatsResponse;
-import com.norman.swp391.service.TopicAnomalyService;
-import com.norman.swp391.service.TopicTrendService;
+import com.norman.swp391.service.KeywordTrendService;
 import com.norman.swp391.service.TrendDemoStatsService;
 import com.norman.swp391.dto.response.admin.SystemStatsResponse;
 import com.norman.swp391.dto.response.admin.UserAdminResponse;
@@ -42,8 +40,7 @@ public class AdminController {
 
     private final AdminService adminService;
     private final PaperReviewService paperReviewService;
-    private final TopicAnomalyService topicAnomalyService;
-    private final TopicTrendService topicTrendService;
+    private final KeywordTrendService keywordTrendService;
     private final TrendDemoStatsService trendDemoStatsService;
 
     /**
@@ -132,23 +129,16 @@ public class AdminController {
         return ApiResponse.ok(paperReviewService.override(id, body));
     }
 
-    /** BR-106: topic có tăng trưởng bất thường (BR-50). */
-    @GetMapping("/anomalies")
-    public ApiResponse<java.util.List<TopicAnomalyResponse>> listAnomalies(
-            @RequestParam(defaultValue = "20") int limit) {
-        return ApiResponse.ok(topicAnomalyService.listCurrentAnomalies(limit));
-    }
-
     @PostMapping("/trends/backfill")
     public ApiResponse<String> backfillTrends(@RequestParam(defaultValue = "12") int months) {
-        topicTrendService.backfillHistoricalMonths(months);
-        return ApiResponse.ok("Backfilled topic trends for last " + months + " months");
+        keywordTrendService.backfillHistoricalMonths(months);
+        return ApiResponse.ok("Backfilled keyword trends for last " + months + " months");
     }
 
     @PostMapping("/trends/recalculate")
     public ApiResponse<String> recalculateTrends() {
-        topicTrendService.recalculateAll();
-        return ApiResponse.ok("Recalculated current month topic trends");
+        keywordTrendService.recalculateAll();
+        return ApiResponse.ok("Recalculated current month keyword trends");
     }
 
     /** Số liệu minh bạch cho báo cáo / thuyết trình. */

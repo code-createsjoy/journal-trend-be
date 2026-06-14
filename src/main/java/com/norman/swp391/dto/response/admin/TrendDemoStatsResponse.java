@@ -9,26 +9,26 @@ import lombok.Value;
 @Builder
 public class TrendDemoStatsResponse {
     long activePapers;
-    long papersWithTopics;
-    long totalTopics;
-    long topicsWithMinPapers;
-    long topicTrendRowsCurrentMonth;
-    long topicTrendRowsWithScoreGe15;
-    long officialTrendingTopics;
-    long topMonthlyTopics;
-    int minTopicPapers;
+    long papersWithKeywords;
+    long totalKeywords;
+    long keywordsWithMinPapers;
+    long keywordTrendRowsCurrentMonth;
+    long keywordTrendRowsWithScoreGe15;
+    long officialTrendingKeywords;
+    long topKeywordsCurrentMonth;
+    int minKeywordPapers;
     int trendingThresholdPercent;
     int consecutiveMonthsRequired;
     int trendBackfillMonths;
     String formulaMom;
     String formulaOfficialTrending;
-    List<TopicMonthSample> topTopicsByPaperCount;
+    List<KeywordMonthSample> topKeywordsByPaperCount;
 
     @Value
     @Builder
-    public static class TopicMonthSample {
-        Long topicId;
-        String topicName;
+    public static class KeywordMonthSample {
+        Long keywordId;
+        String term;
         long totalPapers;
         Double currentMonthTrendScore;
     }

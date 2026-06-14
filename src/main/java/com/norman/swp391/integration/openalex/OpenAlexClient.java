@@ -5,6 +5,7 @@ import com.norman.swp391.config.AppProperties;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.integration.model.ExternalAuthorInfo;
+import com.norman.swp391.integration.model.ExternalKeywordInfo;
 import com.norman.swp391.integration.model.ExternalAuthorProfile;
 import com.norman.swp391.integration.model.ExternalPaperMetadata;
 import java.time.LocalDate;
@@ -12,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.StreamSupport;
@@ -123,9 +125,9 @@ public class OpenAlexClient {
         LocalDate publicationDate = resolvePublicationDate(work);
         Integer citationCount =
                 work.path("cited_by_count").isInt() ? work.path("cited_by_count").asInt() : null;
-        List<String> topics = mergeTopicNames(
-                mapOpenAlexTopics(work.path("topics")),
-                mapConceptsToTopics(work.path("concepts")));
+        List<ExternalKeywordInfo> keywords = mapOpenAlexKeywords(
+                work.path("topics"),
+                work.path("concepts"));
         List<String> authors = new ArrayList<>();
         List<ExternalAuthorInfo> authorDetails = mapAuthorDetails(work.path("authorships"));
         for (ExternalAuthorInfo info : authorDetails) {
@@ -143,12 +145,13 @@ public class OpenAlexClient {
                 doi,
                 publicationDate,
                 citationCount,
-                topics,
+                keywords,
                 authors,
                 pdfUrl,
                 landingPageUrl,
                 openAccess,
                 journal,
+                "OPENALEX",
                 openAlexId,
                 authorDetails);
     }
@@ -211,46 +214,71 @@ public class OpenAlexClient {
         return null;
     }
 
-/**
- * Chuyển đổi entity sang DTO: mapOpenAlexTopics.
- */
-    private List<String> mapOpenAlexTopics(JsonNode topics) {
-        if (!topics.isArray()) {
-            return List.of();
+    private List<ExternalKeywordInfo> mapOpenAlexKeywords(JsonNode topicsNode, JsonNode conceptsNode) {
+        List<ExternalKeywordInfo> keywords = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        String primaryDomain = "General";
+        
+        if (topicsNode != null && topicsNode.isArray()) {
+            List<JsonNode> topicList = StreamSupport.stream(topicsNode.spliterator(), false)
+                    .map(JsonNode.class::cast)
+                    .sorted(Comparator.comparingDouble((JsonNode node) -> node.path("score").asDouble(0)).reversed())
+                    .toList();
+            for (JsonNode node : topicList) {
+                String term = textOrNull(node.path("display_name"));
+                if (StringUtils.hasText(term) && seen.add(term.toLowerCase().trim())) {
+                    String domain = "General";
+                    if (node.has("subfield") && !node.path("subfield").isNull()) {
+                        domain = textOrNull(node.path("subfield").path("display_name"));
+                    } else if (node.has("field") && !node.path("field").isNull()) {
+                        domain = textOrNull(node.path("field").path("display_name"));
+                    } else if (node.has("domain") && !node.path("domain").isNull()) {
+                        domain = textOrNull(node.path("domain").path("display_name"));
+                    }
+                    if (!StringUtils.hasText(domain)) {
+                        domain = "General";
+                    }
+                    if ("General".equals(primaryDomain) && !"General".equals(domain)) {
+                        primaryDomain = domain;
+                    }
+                    keywords.add(new ExternalKeywordInfo(term.trim(), domain.trim()));
+                }
+            }
         }
-        return StreamSupport.stream(topics.spliterator(), false)
-                .map(JsonNode.class::cast)
-                .sorted(Comparator.comparingDouble((JsonNode node) -> node.path("score").asDouble(0)).reversed())
-                .map(node -> textOrNull(node.path("display_name")))
-                .filter(StringUtils::hasText)
-                .distinct()
-                .toList();
-    }
 
-/**
- * Chuyển đổi entity sang DTO: mapConceptsToTopics.
- */
-    private List<String> mapConceptsToTopics(JsonNode concepts) {
-        if (!concepts.isArray()) {
-            return List.of();
+        String fallbackDomain = null;
+        double maxConceptScore = -1.0;
+        if (conceptsNode != null && conceptsNode.isArray()) {
+            for (JsonNode node : conceptsNode) {
+                int level = node.path("level").asInt(-1);
+                if (level == 0) {
+                    double score = node.path("score").asDouble(0.0);
+                    if (score > maxConceptScore) {
+                        maxConceptScore = score;
+                        fallbackDomain = textOrNull(node.path("display_name"));
+                    }
+                }
+            }
         }
-        return StreamSupport.stream(concepts.spliterator(), false)
-                .map(JsonNode.class::cast)
-                .sorted(Comparator.comparingInt((JsonNode node) -> node.path("score").asInt(0)).reversed())
-                .map(node -> textOrNull(node.path("display_name")))
-                .filter(StringUtils::hasText)
-                .distinct()
-                .toList();
-    }
-
-/**
- * Xử lý nghiệp vụ: mergeTopicNames.
- */
-    private List<String> mergeTopicNames(List<String> primary, List<String> secondary) {
-        Set<String> merged = new java.util.LinkedHashSet<>();
-        merged.addAll(primary);
-        merged.addAll(secondary);
-        return new ArrayList<>(merged);
+        if ("General".equals(primaryDomain) && StringUtils.hasText(fallbackDomain)) {
+            primaryDomain = fallbackDomain;
+        }
+        
+        if (conceptsNode != null && conceptsNode.isArray()) {
+            List<JsonNode> conceptList = StreamSupport.stream(conceptsNode.spliterator(), false)
+                    .map(JsonNode.class::cast)
+                    .sorted(Comparator.comparingDouble((JsonNode node) -> node.path("score").asDouble(0)).reversed())
+                    .toList();
+            for (JsonNode node : conceptList) {
+                String term = textOrNull(node.path("display_name"));
+                if (StringUtils.hasText(term) && seen.add(term.toLowerCase().trim())) {
+                    int level = node.path("level").asInt(-1);
+                    String domain = (level == 0) ? term : primaryDomain;
+                    keywords.add(new ExternalKeywordInfo(term.trim(), domain.trim()));
+                }
+            }
+        }
+        return keywords;
     }
 
 /**
@@ -273,7 +301,7 @@ public class OpenAlexClient {
             if (institutions.isArray() && !institutions.isEmpty()) {
                 affiliation = textOrNull(institutions.get(0).path("display_name"));
             }
-            authors.add(new ExternalAuthorInfo(name, openAlexId, affiliation != null ? affiliation : ""));
+            authors.add(new ExternalAuthorInfo(name, "OPENALEX", openAlexId, affiliation != null ? affiliation : ""));
         });
         return authors;
     }

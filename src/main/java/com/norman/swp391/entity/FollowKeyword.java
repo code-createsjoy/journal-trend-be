@@ -1,4 +1,5 @@
 package com.norman.swp391.entity;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -15,16 +16,18 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
 @Entity
 @Table(
-        name = "follow_topics",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "topic_id"}))
+        name = "follow_keywords",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "keyword_id"}))
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class FollowTopic {
+public class FollowKeyword {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -34,10 +37,9 @@ public class FollowTopic {
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "topic_id", nullable = false)
-    private Topic topic;
+    @JoinColumn(name = "keyword_id", nullable = false)
+    private Keyword keyword;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    @Column(name = "followed_at", nullable = false)
+    private LocalDateTime followedAt;
 }
-

@@ -12,6 +12,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import org.hibernate.annotations.Nationalized;
+
 @Entity
 @Table(name = "authors")
 @Getter
@@ -25,15 +27,20 @@ public class Author {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Nationalized
     @Column(nullable = false, length = 255)
     private String name;
 
+    @Nationalized
     @Column(length = 500)
     private String affiliation;
 
     @Column(name = "citation_count", nullable = false)
     private int citationCount;
 
-    @Column(name = "open_alex_id", length = 64)
-    private String openAlexId;
+    @Column(name = "source_type", length = 50)
+    private String sourceType;
+
+    @Column(name = "source_identifier", length = 100)
+    private String sourceIdentifier;
 }

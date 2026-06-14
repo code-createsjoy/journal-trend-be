@@ -11,13 +11,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * API chủ đề cho Helix.
+ * API chủ đề/từ khóa cho Helix (duy trì tương thích với giao diện Helix).
  */
 @Hidden
 @RestController
 @RequestMapping("/api/topics")
 @RequiredArgsConstructor
-public class HelixTopicsController {
+public class HelixKeywordsController {
 
     private final HelixApiService helixApiService;
 
@@ -45,5 +45,3 @@ public class HelixTopicsController {
         return helixApiService.listPapersByTopic(id, limit);
     }
 }
-
-

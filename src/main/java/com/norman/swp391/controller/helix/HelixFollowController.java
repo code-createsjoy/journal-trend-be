@@ -1,9 +1,9 @@
 package com.norman.swp391.controller.helix;
 
 import com.norman.swp391.dto.response.journal.JournalResponse;
-import com.norman.swp391.dto.response.topic.TopicResponse;
+import com.norman.swp391.dto.response.keyword.KeywordResponse;
 import com.norman.swp391.service.FollowJournalService;
-import com.norman.swp391.service.FollowTopicService;
+import com.norman.swp391.service.FollowKeywordService;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -19,31 +19,31 @@ import java.util.List;
 @RequiredArgsConstructor
 public class HelixFollowController {
 
-    private final FollowTopicService followTopicService;
+    private final FollowKeywordService followKeywordService;
     private final FollowJournalService followJournalService;
 
     /**
      * Xử lý API listFollowedTopics.
      */
     @GetMapping("/topics")
-    public List<TopicResponse> listFollowedTopics() {
-        return followTopicService.listFollowed();
+    public List<KeywordResponse> listFollowedTopics() {
+        return followKeywordService.listFollowed();
     }
 
     /**
      * Xử lý API followTopic.
      */
     @PostMapping("/topics/{topicId}")
-    public void followTopic(@PathVariable Long topicId) {
-        followTopicService.follow(topicId);
+    public void followTopic(@PathVariable("topicId") Long topicId) {
+        followKeywordService.follow(topicId);
     }
 
     /**
      * Xử lý API unfollowTopic.
      */
     @DeleteMapping("/topics/{topicId}")
-    public void unfollowTopic(@PathVariable Long topicId) {
-        followTopicService.unfollow(topicId);
+    public void unfollowTopic(@PathVariable("topicId") Long topicId) {
+        followKeywordService.unfollow(topicId);
     }
 
     /**

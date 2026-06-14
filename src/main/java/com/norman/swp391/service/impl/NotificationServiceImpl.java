@@ -3,11 +3,11 @@ package com.norman.swp391.service.impl;
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.notification.NotificationResponse;
 import com.norman.swp391.entity.FollowJournal;
-import com.norman.swp391.entity.FollowTopic;
+import com.norman.swp391.entity.FollowKeyword;
 import com.norman.swp391.entity.Notification;
 import com.norman.swp391.entity.Paper;
-import com.norman.swp391.entity.PaperTopic;
-import com.norman.swp391.entity.Topic;
+import com.norman.swp391.entity.PaperKeyword;
+import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.User;
 import com.norman.swp391.entity.enums.NotificationReadStatus;
 import com.norman.swp391.entity.enums.NotificationTriggerType;
@@ -15,10 +15,10 @@ import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.mapper.NotificationMapper;
 import com.norman.swp391.repository.FollowJournalRepository;
-import com.norman.swp391.repository.FollowTopicRepository;
+import com.norman.swp391.repository.FollowKeywordRepository;
 import com.norman.swp391.repository.NotificationRepository;
 import com.norman.swp391.repository.PaperRepository;
-import com.norman.swp391.repository.PaperTopicRepository;
+import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.NotificationService;
 import java.time.LocalDateTime;
@@ -39,16 +39,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
-    private final FollowTopicRepository followTopicRepository;
+    private final FollowKeywordRepository followKeywordRepository;
     private final FollowJournalRepository followJournalRepository;
     private final PaperRepository paperRepository;
-    private final PaperTopicRepository paperTopicRepository;
+    private final PaperKeywordRepository paperKeywordRepository;
 
     @Override
     @Transactional(readOnly = true)
-/**
- * Danh sách: listForCurrentUser.
- */
     public PageResponse<NotificationResponse> listForCurrentUser(Pageable pageable) {
         Long userId = requireUserId();
         Page<Notification> page = notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
@@ -57,9 +54,6 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-/**
- * Xử lý nghiệp vụ: markAsRead.
- */
     public void markAsRead(Long notificationId) {
         Long userId = requireUserId();
         Notification notification = notificationRepository
@@ -72,9 +66,6 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-/**
- * Xử lý nghiệp vụ: markAllAsRead.
- */
     public void markAllAsRead() {
         Long userId = requireUserId();
         Page<Notification> page =
@@ -85,26 +76,23 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-/**
- * Xử lý nghiệp vụ: notifyTrendingForFollowedTopics.
- */
-    public void notifyTrendingForFollowedTopics(List<Topic> trendingTopics) {
-        if (trendingTopics == null || trendingTopics.isEmpty()) {
+    public void notifyTrendingForFollowedKeywords(List<Keyword> trendingKeywords) {
+        if (trendingKeywords == null || trendingKeywords.isEmpty()) {
             return;
         }
-        for (Topic topic : trendingTopics) {
-            List<FollowTopic> followers = followTopicRepository.findByTopicId(topic.getId());
-            for (FollowTopic follow : followers) {
+        for (Keyword keyword : trendingKeywords) {
+            List<FollowKeyword> followers = followKeywordRepository.findByKeywordId(keyword.getKeywordId());
+            for (FollowKeyword follow : followers) {
                 User user = follow.getUser();
-                if (notificationRepository.existsByUserIdAndTopicIdAndTriggerType(
-                        user.getId(), topic.getId(), NotificationTriggerType.TRENDING_TOPIC)) {
+                if (notificationRepository.existsByUserIdAndKeywordIdAndTriggerType(
+                        user.getId(), keyword.getKeywordId(), NotificationTriggerType.TRENDING_KEYWORD)) {
                     continue;
                 }
                 notificationRepository.save(Notification.builder()
                         .user(user)
-                        .topic(topic)
-                        .message("Topic \"" + topic.getName() + "\" is trending")
-                        .triggerType(NotificationTriggerType.TRENDING_TOPIC)
+                        .keyword(keyword)
+                        .message("Keyword \"" + keyword.getTerm() + "\" is trending")
+                        .triggerType(NotificationTriggerType.TRENDING_KEYWORD)
                         .readStatus(NotificationReadStatus.UNREAD)
                         .createdAt(LocalDateTime.now())
                         .build());
@@ -114,9 +102,6 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-/**
- * Xử lý nghiệp vụ: notifyNewPapersForSubscriptions.
- */
     public void notifyNewPapersForSubscriptions(Set<Long> newPaperIds) {
         if (newPaperIds == null || newPaperIds.isEmpty()) {
             return;
@@ -128,13 +113,10 @@ public class NotificationServiceImpl implements NotificationService {
                 continue;
             }
             notifyJournalFollowers(paper, notifiedUsers);
-            notifyTopicFollowers(paper, notifiedUsers);
+            notifyKeywordFollowers(paper, notifiedUsers);
         }
     }
 
-/**
- * Xử lý nghiệp vụ: notifyJournalFollowers.
- */
     private void notifyJournalFollowers(Paper paper, Set<Long> notifiedUsers) {
         if (paper.getJournalRef() == null) {
             return;
@@ -160,13 +142,10 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-/**
- * Xử lý nghiệp vụ: notifyTopicFollowers.
- */
-    private void notifyTopicFollowers(Paper paper, Set<Long> notifiedUsers) {
-        for (PaperTopic pt : paperTopicRepository.findByPaperId(paper.getId())) {
-            Topic topic = pt.getTopic();
-            for (FollowTopic follow : followTopicRepository.findByTopicId(topic.getId())) {
+    private void notifyKeywordFollowers(Paper paper, Set<Long> notifiedUsers) {
+        for (PaperKeyword pk : paperKeywordRepository.findByPaperId(paper.getId())) {
+            Keyword keyword = pk.getKeyword();
+            for (FollowKeyword follow : followKeywordRepository.findByKeywordId(keyword.getKeywordId())) {
                 User user = follow.getUser();
                 if (!notifiedUsers.add(user.getId())) {
                     continue;
@@ -177,8 +156,8 @@ public class NotificationServiceImpl implements NotificationService {
                 notificationRepository.save(Notification.builder()
                         .user(user)
                         .paper(paper)
-                        .topic(topic)
-                        .message("New paper in topic \"" + topic.getName() + "\": " + truncate(paper.getTitle(), 80))
+                        .keyword(keyword)
+                        .message("New paper with keyword \"" + keyword.getTerm() + "\": " + truncate(paper.getTitle(), 80))
                         .triggerType(NotificationTriggerType.NEW_PAPER)
                         .readStatus(NotificationReadStatus.UNREAD)
                         .createdAt(LocalDateTime.now())
@@ -187,9 +166,6 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-/**
- * Xử lý nghiệp vụ: truncate.
- */
     private static String truncate(String text, int max) {
         if (text == null) {
             return "";
@@ -197,9 +173,6 @@ public class NotificationServiceImpl implements NotificationService {
         return text.length() <= max ? text : text.substring(0, max - 1) + "…";
     }
 
-/**
- * Xử lý nghiệp vụ: requireUserId.
- */
     private Long requireUserId() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {

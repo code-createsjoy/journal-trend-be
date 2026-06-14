@@ -2,7 +2,7 @@ package com.norman.swp391.service;
 
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.notification.NotificationResponse;
-import com.norman.swp391.entity.Topic;
+import com.norman.swp391.entity.Keyword;
 import java.util.List;
 import java.util.Set;
 import org.springframework.data.domain.Pageable;
@@ -28,9 +28,9 @@ public interface NotificationService {
     void markAllAsRead();
 
 /**
- * Xử lý nghiệp vụ: notifyTrendingForFollowedTopics.
+ * Xử lý nghiệp vụ: notifyTrendingForFollowedKeywords.
  */
-    void notifyTrendingForFollowedTopics(List<Topic> trendingTopics);
+    void notifyTrendingForFollowedKeywords(List<Keyword> trendingKeywords);
 
 /**
  * Xử lý nghiệp vụ: notifyNewPapersForSubscriptions.
