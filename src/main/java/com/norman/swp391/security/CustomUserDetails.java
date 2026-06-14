@@ -21,6 +21,8 @@ public class CustomUserDetails implements UserDetails {
     private final String password;
     private final UserRole role;
     private final UserStatus status;
+    private final boolean enabled;
+    private final boolean verified;
 
 /**
  * Xử lý nghiệp vụ: CustomUserDetails.
@@ -31,6 +33,8 @@ public class CustomUserDetails implements UserDetails {
         this.password = user.getPassword();
         this.role = user.getRole();
         this.status = user.getStatus();
+        this.enabled = user.isEnabled();
+        this.verified = user.isVerified();
     }
 
     @Override
@@ -78,6 +82,6 @@ public class CustomUserDetails implements UserDetails {
  * Xử lý nghiệp vụ: isEnabled.
  */
     public boolean isEnabled() {
-        return status == UserStatus.ACTIVE;
+        return enabled;
     }
 }

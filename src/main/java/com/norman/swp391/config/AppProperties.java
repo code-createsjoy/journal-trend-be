@@ -19,7 +19,9 @@ public class AppProperties {
 
     private String corsAllowedOrigins;
     private String frontendBaseUrl;
+    private String backendBaseUrl = "http://localhost:8080";
     private int passwordResetExpirationMinutes;
+    private int emailVerificationExpirationMinutes = 1440;
     /**
      * Thực hiện Jwt.
      */
