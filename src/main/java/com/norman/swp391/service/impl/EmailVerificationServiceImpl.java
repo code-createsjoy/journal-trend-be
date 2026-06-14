@@ -3,6 +3,7 @@ package com.norman.swp391.service.impl;
 import com.norman.swp391.config.AppProperties;
 import com.norman.swp391.entity.EmailVerificationToken;
 import com.norman.swp391.entity.User;
+import com.norman.swp391.entity.enums.UserRole;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.repository.EmailVerificationTokenRepository;
@@ -93,7 +94,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     @Transactional(readOnly = true)
     public boolean isUserVerified(String email) {
         return userRepository.findByEmailIgnoreCase(email.trim())
-                .map(User::isVerified)
+                .map(u -> u.isVerified() || u.getRole() == UserRole.ADMIN || u.getRole() == UserRole.SUPER_ADMIN)
                 .orElse(false);
     }
 }
