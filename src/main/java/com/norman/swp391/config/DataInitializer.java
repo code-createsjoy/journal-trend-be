@@ -76,7 +76,15 @@ public class DataInitializer implements CommandLineRunner {
  * Xử lý nghiệp vụ: seedSuperAdmin.
  */
     private void seedSuperAdmin() {
-        if (userRepository.findByEmailIgnoreCase(SUPER_ADMIN_EMAIL).isPresent()) {
+        var existing = userRepository.findByEmailIgnoreCase(SUPER_ADMIN_EMAIL);
+        if (existing.isPresent()) {
+            User user = existing.get();
+            if (!user.isEnabled() || !user.isVerified()) {
+                user.setEnabled(true);
+                user.setVerified(true);
+                userRepository.save(user);
+                log.info("Updated existing super admin to be enabled and verified: {}", SUPER_ADMIN_EMAIL);
+            }
             return;
         }
         userRepository.save(User.builder()
@@ -85,6 +93,8 @@ public class DataInitializer implements CommandLineRunner {
                 .fullName("Super Admin")
                 .role(UserRole.SUPER_ADMIN)
                 .status(UserStatus.ACTIVE)
+                .enabled(true)
+                .verified(true)
                 .build());
         log.info("Seeded super admin: {}", SUPER_ADMIN_EMAIL);
     }
@@ -93,7 +103,15 @@ public class DataInitializer implements CommandLineRunner {
  * Xử lý nghiệp vụ: seedHelixAdmin.
  */
     private void seedHelixAdmin() {
-        if (userRepository.findByEmailIgnoreCase(HELIX_ADMIN_EMAIL).isPresent()) {
+        var existing = userRepository.findByEmailIgnoreCase(HELIX_ADMIN_EMAIL);
+        if (existing.isPresent()) {
+            User user = existing.get();
+            if (!user.isEnabled() || !user.isVerified()) {
+                user.setEnabled(true);
+                user.setVerified(true);
+                userRepository.save(user);
+                log.info("Updated existing Helix admin to be enabled and verified: {}", HELIX_ADMIN_EMAIL);
+            }
             return;
         }
         userRepository.save(User.builder()
@@ -102,6 +120,8 @@ public class DataInitializer implements CommandLineRunner {
                 .fullName("Helix Admin")
                 .role(UserRole.ADMIN)
                 .status(UserStatus.ACTIVE)
+                .enabled(true)
+                .verified(true)
                 .build());
         log.info("Seeded Helix admin: {}", HELIX_ADMIN_EMAIL);
     }
