@@ -26,6 +26,8 @@ import com.norman.swp391.security.JwtTokenProvider;
 import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.AuthService;
 import com.norman.swp391.service.EmailService;
+import com.norman.swp391.service.EmailVerificationService;
+import com.norman.swp391.entity.EmailVerificationToken;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +58,7 @@ public class AuthServiceImpl implements AuthService {
     private final JavaMailSender mailSender;
     private final AppProperties appProperties;
     private final EmailService emailService;
+    private final EmailVerificationService emailVerificationService;
 
     @Override
     @Transactional
@@ -72,9 +75,14 @@ public class AuthServiceImpl implements AuthService {
                 .fullName(request.getFullName().trim())
                 .role(UserRole.USER)
                 .status(UserStatus.ACTIVE)
+                .enabled(false)
+                .verified(false)
                 .build();
         user = userRepository.save(user);
-        emailService.sendRegistrationConfirmEmail(user.getEmail(), user.getFullName());
+        
+        EmailVerificationToken token = emailVerificationService.createVerificationToken(user);
+        emailService.sendVerificationEmail(user.getEmail(), user.getFullName(), token.getToken());
+        
         return UserMapper.toResponse(user);
     }
 
@@ -84,14 +92,20 @@ public class AuthServiceImpl implements AuthService {
  * Đăng nhập và trả về token.
  */
     public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail().trim(), request.getPassword()));
         User user = userRepository
                 .findByEmailIgnoreCase(request.getEmail().trim())
                 .orElseThrow(() -> new ResourceNotFoundException("User", request.getEmail()));
+        
+        if (!user.isVerified()) {
+            throw new BadRequestException("EMAIL_NOT_VERIFIED");
+        }
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new BadRequestException("Account is locked");
         }
+        
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.getEmail().trim(), request.getPassword()));
+        
         return buildAuthResponse(user);
     }
 

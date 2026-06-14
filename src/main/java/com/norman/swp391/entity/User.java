@@ -45,5 +45,13 @@ public class User extends BaseAuditEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "user_status", nullable = false, length = 30)
     private UserStatus status;
+
+    @Column(name = "enabled", nullable = false, columnDefinition = "bit default 0")
+    @Builder.Default
+    private boolean enabled = false;
+
+    @Column(name = "verified", nullable = false, columnDefinition = "bit default 0")
+    @Builder.Default
+    private boolean verified = false;
 }
 
