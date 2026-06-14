@@ -1,4 +1,5 @@
 package com.norman.swp391.entity;
+
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -13,16 +14,18 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
 @Entity
 @Table(
-        name = "paper_topics",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"paper_id", "topic_id"}))
+        name = "paper_keywords",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"paper_id", "keyword_id"}))
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class PaperTopic {
+public class PaperKeyword {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -32,6 +35,6 @@ public class PaperTopic {
     private Paper paper;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "topic_id", nullable = false)
-    private Topic topic;
+    @JoinColumn(name = "keyword_id", nullable = false)
+    private Keyword keyword;
 }

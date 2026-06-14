@@ -1,101 +1,95 @@
 package com.norman.swp391.repository;
 
-import com.norman.swp391.entity.PaperTopic;
+import com.norman.swp391.entity.PaperKeyword;
 import com.norman.swp391.entity.enums.PaperReviewStatus;
 import com.norman.swp391.entity.enums.PaperStatus;
+import java.util.Collection;
+import java.util.List;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.util.Collection;
-import java.util.List;
+public interface PaperKeywordRepository extends JpaRepository<PaperKeyword, Long> {
 
-/**
- * Kho truy cập liên kết bài báo–chủ đề.
- */
-public interface PaperTopicRepository extends JpaRepository<PaperTopic, Long> {
+    List<PaperKeyword> findByPaperId(Long paperId);
 
-/**
- * Tìm kiếm: findByPaperId.
- */
-    List<PaperTopic> findByPaperId(Long paperId);
-
-    @Query("SELECT pt FROM PaperTopic pt JOIN FETCH pt.topic WHERE pt.paper.id IN :paperIds")
-    List<PaperTopic> findByPaperIdInWithTopic(@Param("paperIds") Collection<Long> paperIds);
+    @Query("SELECT pk FROM PaperKeyword pk JOIN FETCH pk.keyword WHERE pk.paper.id IN :paperIds")
+    List<PaperKeyword> findByPaperIdInWithKeyword(@Param("paperIds") Collection<Long> paperIds);
 
     @Query("""
-        SELECT pt.topic.id, COUNT(pt) FROM PaperTopic pt
-        JOIN pt.paper p
+        SELECT pk.keyword.keywordId, COUNT(pk) FROM PaperKeyword pk
+        JOIN pk.paper p
         WHERE p.status = :status
           AND p.reviewStatus = :reviewStatus
           AND YEAR(p.publicationDate) = :year
           AND MONTH(p.publicationDate) = :month
-        GROUP BY pt.topic.id
+        GROUP BY pk.keyword.keywordId
         """)
-    List<Object[]> countPapersByTopicForMonth(
+    List<Object[]> countPapersByKeywordForMonth(
             @Param("year") int year,
             @Param("month") int month,
             @Param("status") PaperStatus status,
             @Param("reviewStatus") PaperReviewStatus reviewStatus);
 
     @Query("""
-        SELECT pt.topic.id, COUNT(pt) FROM PaperTopic pt
-        JOIN pt.paper p
+        SELECT pk.keyword.keywordId, COUNT(pk) FROM PaperKeyword pk
+        JOIN pk.paper p
         WHERE p.status = :status
           AND p.reviewStatus = :reviewStatus
           AND YEAR(p.publicationDate) = :year
-        GROUP BY pt.topic.id
+        GROUP BY pk.keyword.keywordId
         """)
-    List<Object[]> countPapersByTopicForYear(
+    List<Object[]> countPapersByKeywordForYear(
             @Param("year") int year,
             @Param("status") PaperStatus status,
             @Param("reviewStatus") PaperReviewStatus reviewStatus);
 
     @Query("""
-        SELECT COUNT(pt) FROM PaperTopic pt
-        JOIN pt.paper p
-        WHERE pt.topic.id = :topicId
+        SELECT COUNT(pk) FROM PaperKeyword pk
+        JOIN pk.paper p
+        WHERE pk.keyword.keywordId = :keywordId
           AND p.status = :status
           AND p.reviewStatus = :reviewStatus
         """)
-    long countByTopicId(
-            @Param("topicId") Long topicId,
+    int countByKeywordId(
+            @Param("keywordId") Long keywordId,
             @Param("status") PaperStatus status,
             @Param("reviewStatus") PaperReviewStatus reviewStatus);
 
     @Query("""
-        SELECT pt.topic.id, COUNT(pt) FROM PaperTopic pt
-        JOIN pt.paper p
+        SELECT pk.keyword.keywordId, COUNT(pk) FROM PaperKeyword pk
+        JOIN pk.paper p
         WHERE p.status = :status AND p.reviewStatus = :reviewStatus
-        GROUP BY pt.topic.id
-        HAVING COUNT(pt) >= :minPapers
+        GROUP BY pk.keyword.keywordId
+        HAVING COUNT(pk) >= :minPapers
         """)
-    List<Long> findTopicIdsWithAtLeastPapers(
+    List<Long> findKeywordIdsWithAtLeastPapers(
             @Param("minPapers") int minPapers,
             @Param("status") PaperStatus status,
             @Param("reviewStatus") PaperReviewStatus reviewStatus);
 
     @Query("""
-        SELECT pt.topic.id, pt.topic.name, COUNT(pt) FROM PaperTopic pt
-        JOIN pt.paper p
+        SELECT pk.keyword.keywordId, pk.keyword.term, COUNT(pk) FROM PaperKeyword pk
+        JOIN pk.paper p
         WHERE p.status = :status AND p.reviewStatus = :reviewStatus
-        GROUP BY pt.topic.id, pt.topic.name
-        ORDER BY COUNT(pt) DESC
+        GROUP BY pk.keyword.keywordId, pk.keyword.term
+        ORDER BY COUNT(pk) DESC
         """)
-    List<Object[]> findTopTopicsByPaperCount(
+    List<Object[]> findTopKeywordsByPaperCount(
             @Param("status") PaperStatus status,
             @Param("reviewStatus") PaperReviewStatus reviewStatus,
-            org.springframework.data.domain.Pageable pageable);
+            Pageable pageable);
 
     @Query("""
-        SELECT pt.topic.id, COUNT(pt) FROM PaperTopic pt
-        JOIN pt.paper p
+        SELECT pk.keyword.keywordId, COUNT(pk) FROM PaperKeyword pk
+        JOIN pk.paper p
         WHERE p.status = :status AND p.reviewStatus = :reviewStatus
-        GROUP BY pt.topic.id
+        GROUP BY pk.keyword.keywordId
         """)
-    List<Object[]> countAllPapersByTopic(
+    List<Object[]> countAllPapersByKeyword(
             @Param("status") PaperStatus status, @Param("reviewStatus") PaperReviewStatus reviewStatus);
 
-    @Query("SELECT COUNT(DISTINCT pt.topic.id) FROM PaperTopic pt")
-    long countDistinctTopics();
+    @Query("SELECT COUNT(DISTINCT pk.keyword.keywordId) FROM PaperKeyword pk")
+    long countDistinctKeywords();
 }

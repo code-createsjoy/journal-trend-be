@@ -1,7 +1,7 @@
 package com.norman.swp391.dto.response.paper;
 
 import com.norman.swp391.dto.response.author.AuthorResponse;
-import com.norman.swp391.dto.response.topic.TopicResponse;
+import com.norman.swp391.dto.response.keyword.KeywordResponse;
 import com.norman.swp391.entity.enums.PaperStatus;
 import lombok.Builder;
 import lombok.Data;
@@ -31,7 +31,7 @@ public class PaperDetailResponse {
     private String primarySource;
     private PaperStatus status;
     private LocalDateTime createdAt;
-    private List<TopicResponse> topics;
+    private List<KeywordResponse> keywords;
     private List<AuthorResponse> authors;
 }
 

@@ -14,9 +14,9 @@ import java.util.Optional;
  */
 public interface AuthorRepository extends JpaRepository<Author, Long> {
     /**
-     * Tìm kiếm: findByOpenAlexIdIgnoreCase.
+     * Tìm kiếm: findBySourceTypeAndSourceIdentifierIgnoreCase.
      */
-    Optional<Author> findByOpenAlexIdIgnoreCase(String openAlexId);
+    Optional<Author> findBySourceTypeAndSourceIdentifierIgnoreCase(String sourceType, String sourceIdentifier);
 
     /**
      * Tìm tác giả đầu tiên theo tên và đơn vị công tác.

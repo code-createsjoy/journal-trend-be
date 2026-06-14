@@ -3,12 +3,12 @@ package com.norman.swp391.mapper;
 import com.norman.swp391.dto.response.author.AuthorResponse;
 import com.norman.swp391.dto.response.paper.PaperDetailResponse;
 import com.norman.swp391.dto.response.paper.PaperResponse;
-import com.norman.swp391.dto.response.topic.TopicResponse;
+import com.norman.swp391.dto.response.keyword.KeywordResponse;
 import com.norman.swp391.entity.Author;
 import com.norman.swp391.entity.Paper;
 import com.norman.swp391.entity.PaperAuthor;
-import com.norman.swp391.entity.PaperTopic;
-import com.norman.swp391.entity.Topic;
+import com.norman.swp391.entity.PaperKeyword;
+import com.norman.swp391.entity.Keyword;
 import java.util.Collections;
 import java.util.List;
 import lombok.experimental.UtilityClass;
@@ -52,17 +52,17 @@ public class PaperMapper {
     }
 
     /**
-     * Chuyển bài báo sang DTO chi tiết kèm chủ đề và tác giả.
+     * Chuyển bài báo sang DTO chi tiết kèm từ khóa và tác giả.
      */
     public static PaperDetailResponse toDetailResponse(
-            Paper paper, List<Topic> topics, List<Author> authors) {
+            Paper paper, List<Keyword> keywords, List<Author> authors) {
         if (paper == null) {
             return null;
         }
-        List<TopicResponse> topicResponses =
-                topics == null
+        List<KeywordResponse> keywordResponses =
+                keywords == null
                         ? Collections.emptyList()
-                        : topics.stream().map(TopicMapper::toResponse).toList();
+                        : keywords.stream().map(KeywordMapper::toResponse).toList();
         List<AuthorResponse> authorResponses =
                 authors == null
                         ? Collections.emptyList()
@@ -83,24 +83,24 @@ public class PaperMapper {
                 .primarySource(paper.getPrimarySource())
                 .status(paper.getStatus())
                 .createdAt(paper.getCreatedAt())
-                .topics(topicResponses)
+                .keywords(keywordResponses)
                 .authors(authorResponses)
                 .build();
     }
 
     /**
-     * Dựng DTO chi tiết từ quan hệ PaperTopic và PaperAuthor.
+     * Dựng DTO chi tiết từ quan hệ PaperKeyword và PaperAuthor.
      */
     public static PaperDetailResponse toDetailResponseFromRelations(
-            Paper paper, List<PaperTopic> paperTopics, List<PaperAuthor> paperAuthors) {
-        List<Topic> topics =
-                paperTopics == null
+            Paper paper, List<PaperKeyword> paperKeywords, List<PaperAuthor> paperAuthors) {
+        List<Keyword> keywords =
+                paperKeywords == null
                         ? Collections.emptyList()
-                        : paperTopics.stream().map(PaperTopic::getTopic).toList();
+                        : paperKeywords.stream().map(PaperKeyword::getKeyword).toList();
         List<Author> authors =
                 paperAuthors == null
                         ? Collections.emptyList()
                         : paperAuthors.stream().map(PaperAuthor::getAuthor).toList();
-        return toDetailResponse(paper, topics, authors);
+        return toDetailResponse(paper, keywords, authors);
     }
 }

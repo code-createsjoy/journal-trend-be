@@ -18,7 +18,7 @@ import com.norman.swp391.repository.AuthorRepository;
 import com.norman.swp391.repository.PaperCollectionRepository;
 import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.SyncLogRepository;
-import com.norman.swp391.repository.TopicRepository;
+import com.norman.swp391.repository.KeywordRepository;
 import com.norman.swp391.repository.UserRepository;
 import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.AdminService;
@@ -41,7 +41,7 @@ public class AdminServiceImpl implements AdminService {
     private final SyncLogRepository syncLogRepository;
     private final UserRepository userRepository;
     private final PaperRepository paperRepository;
-    private final TopicRepository topicRepository;
+    private final KeywordRepository keywordRepository;
     private final AuthorRepository authorRepository;
     private final PaperCollectionRepository paperCollectionRepository;
 
@@ -121,7 +121,7 @@ public class AdminServiceImpl implements AdminService {
                 .activeUsers(userRepository.countByStatus(UserStatus.ACTIVE))
                 .lockedUsers(userRepository.countByStatus(UserStatus.LOCKED))
                 .totalPapers(paperRepository.countByStatus(PaperStatus.ACTIVE))
-                .totalTopics(topicRepository.count())
+                .totalKeywords(keywordRepository.count())
                 .totalAuthors(authorRepository.count())
                 .totalCollections(paperCollectionRepository.count())
                 .lastSyncPapersFetched(lastSync != null ? lastSync.getPapersFetched() : 0)

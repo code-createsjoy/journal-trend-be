@@ -1,8 +1,11 @@
 package com.norman.swp391.repository;
 
 import com.norman.swp391.entity.Paper;
+import com.norman.swp391.entity.Keyword;
+import com.norman.swp391.entity.PaperKeyword;
 import com.norman.swp391.entity.enums.PaperReviewStatus;
 import com.norman.swp391.entity.enums.PaperStatus;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -29,9 +32,9 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
     Optional<Paper> findByDoiIgnoreCase(String doi);
 
     /**
-     * Tìm bài báo theo OpenAlex ID.
+     * Tìm bài báo theo Source Type và Identifier.
      */
-    Optional<Paper> findByOpenAlexIdIgnoreCase(String openAlexId);
+    Optional<Paper> findBySourceTypeAndSourceIdentifierIgnoreCase(String sourceType, String sourceIdentifier);
 
     /**
      * Lấy bài thiếu ngày xuất bản theo trạng thái.
@@ -54,29 +57,70 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
     Optional<Paper> findFirstByStatusOrderByCitationCountDesc(PaperStatus status);
 
     /**
-     * Tìm kiếm bài báo theo từ khóa, chủ đề và tác giả.
+     * Tìm kiếm bài báo theo từ khóa, keyword và tác giả.
      */
     @Query("""
-        SELECT DISTINCT p FROM Paper p
-        LEFT JOIN PaperTopic pt ON pt.paper = p
-        LEFT JOIN Topic t ON pt.topic = t
-        LEFT JOIN PaperAuthor pa ON pa.paper = p
-        LEFT JOIN Author a ON pa.author = a
+        SELECT p FROM Paper p
         WHERE p.status = :status
           AND p.reviewStatus = :reviewStatus
           AND (:q IS NULL OR LOWER(p.title) LIKE LOWER(CONCAT('%', :q, '%'))
                OR LOWER(p.abstractText) LIKE LOWER(CONCAT('%', :q, '%'))
-               OR LOWER(p.doi) LIKE LOWER(CONCAT('%', :q, '%')))
-          AND (:topicId IS NULL OR t.id = :topicId)
-          AND (:authorId IS NULL OR a.id = :authorId)
+               OR LOWER(p.doi) LIKE LOWER(CONCAT('%', :q, '%'))
+               OR LOWER(p.journal) LIKE LOWER(CONCAT('%', :q, '%'))
+               OR p.id IN (
+                   SELECT DISTINCT pk.paper.id FROM PaperKeyword pk
+                   WHERE LOWER(pk.keyword.term) LIKE LOWER(CONCAT('%', :q, '%'))
+               )
+               OR p.id IN (
+                   SELECT DISTINCT pa.paper.id FROM PaperAuthor pa
+                   WHERE LOWER(pa.author.name) LIKE LOWER(CONCAT('%', :q, '%'))
+               ))
+          AND (:keywordId IS NULL OR p.id IN (
+              SELECT DISTINCT pk2.paper.id FROM PaperKeyword pk2
+              WHERE pk2.keyword.keywordId = :keywordId
+          ))
+          AND (:authorId IS NULL OR p.id IN (
+              SELECT DISTINCT pa2.paper.id FROM PaperAuthor pa2
+              WHERE pa2.author.id = :authorId
+          ))
+          AND (:fromYear IS NULL OR YEAR(p.publicationDate) >= :fromYear)
+          AND (:toYear IS NULL OR YEAR(p.publicationDate) <= :toYear)
+          AND (:category IS NULL OR p.id IN (
+              SELECT DISTINCT pk3.paper.id FROM PaperKeyword pk3
+              WHERE LOWER(pk3.keyword.domain) = LOWER(:category)
+          ))
+          AND (:minCitations IS NULL OR p.citationCount >= :minCitations)
         """)
     Page<Paper> search(
             @Param("status") PaperStatus status,
             @Param("reviewStatus") PaperReviewStatus reviewStatus,
             @Param("q") String q,
-            @Param("topicId") Long topicId,
+            @Param("keywordId") Long keywordId,
             @Param("authorId") Long authorId,
+            @Param("fromYear") Integer fromYear,
+            @Param("toYear") Integer toYear,
+            @Param("category") String category,
+            @Param("minCitations") Integer minCitations,
             Pageable pageable);
+
+    /**
+     * Lấy bài báo theo domain của keyword (để lấy bài báo theo topic/domain).
+     */
+    @Query(
+        value = """
+            SELECT TOP 50 * FROM papers p
+            WHERE p.status = 'ACTIVE'
+              AND p.review_status = 'NONE'
+              AND p.id IN (
+                  SELECT DISTINCT pk.paper_id FROM paper_keywords pk
+                  INNER JOIN keywords k ON pk.keyword_id = k.keyword_id
+                  WHERE LOWER(k.domain) = LOWER(:domain)
+              )
+            ORDER BY p.citation_count DESC
+            """,
+        nativeQuery = true
+    )
+    List<Paper> findByKeywordDomain(@Param("domain") String domain);
 
     /**
      * Tổng lượt trích dẫn theo trạng thái.
@@ -101,6 +145,12 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
      */
     @Query("SELECT MAX(YEAR(p.publicationDate)) FROM Paper p WHERE p.status = :status AND p.publicationDate IS NOT NULL")
     Integer findMaxPublicationYear(@Param("status") PaperStatus status);
+
+    /**
+     * Danh sách các năm xuất bản có trong kho (distinct).
+     */
+    @Query("SELECT p.publicationDate FROM Paper p WHERE p.status = :status AND p.publicationDate IS NOT NULL")
+    List<LocalDate> findAllPublicationDates(@Param("status") PaperStatus status);
 
     /**
      * Bài cần bổ sung metadata (tóm tắt hoặc tác giả).
@@ -142,10 +192,10 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
 
     @Query(value = """
         SELECT COUNT(DISTINCT p.id) FROM papers p
-        INNER JOIN paper_topics pt ON pt.paper_id = p.id
+        INNER JOIN paper_keywords pk ON pk.paper_id = p.id
         WHERE p.status = 'ACTIVE' AND p.review_status = 'NONE'
         """, nativeQuery = true)
-    long countActiveWithAtLeastOneTopic();
+    long countActiveWithAtLeastOneKeyword();
 
     @Query("""
         SELECT p FROM Paper p

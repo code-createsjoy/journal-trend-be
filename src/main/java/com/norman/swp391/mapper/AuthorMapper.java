@@ -23,7 +23,8 @@ public class AuthorMapper {
                 .name(author.getName())
                 .affiliation(author.getAffiliation())
                 .citationCount(author.getCitationCount())
-                .openAlexId(author.getOpenAlexId())
+                .sourceType(author.getSourceType())
+                .sourceIdentifier(author.getSourceIdentifier())
                 .build();
     }
 

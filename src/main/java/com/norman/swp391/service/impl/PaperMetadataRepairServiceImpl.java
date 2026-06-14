@@ -27,8 +27,8 @@ public class PaperMetadataRepairServiceImpl implements PaperMetadataRepairServic
         var papers = paperRepository.findNeedingMetadataRepair(PageRequest.of(0, size));
         int repaired = 0;
         for (Paper paper : papers) {
-        String idOrDoi = StringUtils.hasText(paper.getOpenAlexId())
-                ? paper.getOpenAlexId()
+        String idOrDoi = StringUtils.hasText(paper.getSourceIdentifier()) && "OPENALEX".equalsIgnoreCase(paper.getSourceType())
+                ? paper.getSourceIdentifier()
                 : paper.getDoi();
             if (!StringUtils.hasText(idOrDoi)) {
                 continue;

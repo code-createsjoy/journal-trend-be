@@ -21,6 +21,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import org.hibernate.annotations.Nationalized;
+
 @Entity
 @Table(name = "papers")
 @Getter
@@ -34,6 +36,7 @@ public class Paper {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Nationalized
     @Column(nullable = false, length = 1000)
     private String title;
 
@@ -49,8 +52,11 @@ public class Paper {
     @Column(length = 255, unique = true)
     private String doi;
 
-    @Column(name = "open_alex_id", length = 64)
-    private String openAlexId;
+    @Column(name = "source_type", length = 50)
+    private String sourceType;
+
+    @Column(name = "source_identifier", length = 100)
+    private String sourceIdentifier;
 
     @Column(name = "source_url", length = 500)
     private String sourceUrl;
@@ -61,6 +67,7 @@ public class Paper {
     @Column(name = "open_access", nullable = false)
     private boolean openAccess;
 
+    @Nationalized
     @Column(length = 500)
     private String journal;
 

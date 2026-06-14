@@ -48,8 +48,8 @@ public class Notification {
     private NotificationTriggerType triggerType;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "topic_id")
-    private Topic topic;
+    @JoinColumn(name = "keyword_id")
+    private Keyword keyword;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "paper_id")

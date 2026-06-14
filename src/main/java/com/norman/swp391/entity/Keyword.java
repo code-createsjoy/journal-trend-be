@@ -1,4 +1,5 @@
 package com.norman.swp391.entity;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -12,41 +13,38 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
 import org.hibernate.annotations.Nationalized;
 
 @Entity
-@Table(name = "journals")
+@Table(name = "keywords")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Journal {
+public class Keyword {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "keyword_id")
+    private Long keywordId;
 
     @Nationalized
-    @Column(nullable = false, unique = true, length = 300)
-    private String name;
+    @Column(nullable = false, unique = true, length = 200)
+    private String term;
 
     @Nationalized
     @Column(length = 200)
-    private String publisher;
-
-    @Column(length = 20, unique = true)
-    private String issn;
-
-    @Nationalized
-    @Column(length = 100)
     private String domain;
 
-    @Column(name = "impact_factor", precision = 8, scale = 3)
-    private BigDecimal impactFactor;
+    @Column(name = "paper_count", nullable = false)
+    @Builder.Default
+    private int paperCount = 0;
 
-    @Column(name = "is_active", nullable = false)
-    private boolean active;
+    @Column(name = "trend_score", nullable = false, precision = 10, scale = 2)
+    @Builder.Default
+    private BigDecimal trendScore = BigDecimal.ZERO;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

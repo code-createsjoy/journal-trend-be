@@ -1,8 +1,8 @@
 package com.norman.swp391.controller.v1;
 
 import com.norman.swp391.dto.common.ApiResponse;
-import com.norman.swp391.dto.response.topic.TrendingTopicResponse;
-import com.norman.swp391.service.TopicService;
+import com.norman.swp391.dto.response.keyword.TrendingTopicResponse;
+import com.norman.swp391.service.KeywordTrendService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,14 +18,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TrendController {
 
-    private final TopicService topicService;
+    private final KeywordTrendService keywordTrendService;
 
     @GetMapping
     /**
      * Chủ đề xu hướng.
      */
     public ApiResponse<List<TrendingTopicResponse>> getTrendingTopics() {
-        return ApiResponse.ok(topicService.getTrendingTopics());
+        return ApiResponse.ok(keywordTrendService.findTrendingTopics());
     }
 }
 

@@ -58,12 +58,12 @@ app:
   sync:
     cron: ${SYNC_CRON:0 0 2 * * *}
     on-startup: ${SYNC_ON_STARTUP:false}
-    min-topic-papers: ${MIN_TOPIC_PAPERS:5}
+    min-keyword-papers: ${MIN_KEYWORD_PAPERS:5}
     trending-threshold-percent: ${TRENDING_THRESHOLD:15}
     trending-consecutive-months: ${TRENDING_CONSECUTIVE_MONTHS:3}
     max-pages: ${SYNC_MAX_PAGES:5}
     max-papers-per-run: ${SYNC_MAX_PAPERS_PER_RUN:1000}
-    from-publication-date: ${SYNC_FROM_PUBLICATION_DATE:2026-01-01}
+    from-publication-date: ${SYNC_FROM_PUBLICATION_DATE:2025-01-01}
     ingest-batch-size: ${SYNC_INGEST_BATCH_SIZE:25}
     enrich-on-sync: ${SYNC_ENRICH_ON_SYNC:false}
     enrich-batch-size: ${SYNC_ENRICH_BATCH_SIZE:20}
@@ -74,20 +74,20 @@ app:
     http-connect-timeout-ms: ${SYNC_HTTP_CONNECT_TIMEOUT_MS:10000}
     http-read-timeout-ms: ${SYNC_HTTP_READ_TIMEOUT_MS:30000}
     open-alex-retry-attempts: ${SYNC_OPENALEX_RETRIES:3}
-    max-follow-topics-per-user: ${MAX_FOLLOW_TOPICS:20}
+    max-follow-keywords-per-user: ${MAX_FOLLOW_KEYWORDS:20}
     max-follow-journals-per-user: ${MAX_FOLLOW_JOURNALS:10}
     max-bookmark-papers-per-user: ${MAX_BOOKMARK_PAPERS:200}
     anomaly-threshold-percent: ${ANOMALY_THRESHOLD_PERCENT:300}
     pending-review-expiry-days: ${PENDING_REVIEW_EXPIRY_DAYS:30}
     trend-backfill-months: ${TREND_BACKFILL_MONTHS:12}
     search-queries:
-      - computer science
+      - artificial intelligence
       - machine learning
       - deep learning
-      - natural language processing
-      - artificial intelligence
-      - data mining
-      - cybersecurity
+      - Generative AI
+      - Large Language Models
+      - Robotics
+      - Data Science
   scheduler-enabled: ${SCHEDULER_ENABLED:true}
 
 springdoc:

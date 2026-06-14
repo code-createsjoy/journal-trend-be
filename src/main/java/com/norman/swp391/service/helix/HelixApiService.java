@@ -13,8 +13,9 @@ import com.norman.swp391.dto.response.collection.CollectionResponse;
 import com.norman.swp391.dto.response.notification.NotificationResponse;
 import com.norman.swp391.dto.response.paper.PaperDetailResponse;
 import com.norman.swp391.dto.response.paper.PaperResponse;
-import com.norman.swp391.dto.response.topic.TopicResponse;
-import com.norman.swp391.dto.response.topic.TrendingTopicResponse;
+import com.norman.swp391.dto.response.keyword.KeywordResponse;
+import com.norman.swp391.dto.response.keyword.TrendingKeywordResponse;
+import com.norman.swp391.dto.response.keyword.TrendingTopicResponse;
 import com.norman.swp391.entity.*;
 import com.norman.swp391.entity.enums.*;
 import com.norman.swp391.mapper.PaperMapper;
@@ -48,8 +49,8 @@ public class HelixApiService {
 
     private final AuthService authService;
     private final PaperService paperService;
-    private final TopicService topicService;
-    private final TopicTrendService topicTrendService;
+    private final KeywordService keywordService;
+    private final KeywordTrendService keywordTrendService;
     private final DashboardHighlightService dashboardHighlightService;
     private final CollectionService collectionService;
     private final NotificationService notificationService;
@@ -58,24 +59,17 @@ public class HelixApiService {
     private final PaperSyncService paperSyncService;
     private final PaperRepository paperRepository;
     private final PaperAuthorRepository paperAuthorRepository;
-    private final PaperTopicRepository paperTopicRepository;
-    private final TopicTrendRepository topicTrendRepository;
+    private final PaperKeywordRepository paperKeywordRepository;
+    private final PublicationTrendRepository publicationTrendRepository;
     private final PaperCollectionRepository paperCollectionRepository;
     private final CollectionPaperRepository collectionPaperRepository;
     private final SyncLogRepository syncLogRepository;
-    private final TopicAnomalyService topicAnomalyService;
     private final PaperReviewService paperReviewService;
 
-/**
- * Đăng nhập và trả về token.
- */
     public HelixAuthSession login(HelixLoginRequest request) {
         return toHelixSession(authService.login(new LoginRequest(request.email(), request.password())));
     }
 
-/**
- * Đăng ký tài khoản mới.
- */
     public HelixAuthSession register(HelixRegisterRequest request) {
         UserResponse user = authService.register(RegisterRequest.builder()
                 .fullName(request.name())
@@ -85,30 +79,24 @@ public class HelixApiService {
         return new HelixAuthSession(toHelixUser(user), null);
     }
 
-/**
- * Xử lý nghiệp vụ: currentUser.
- */
     public HelixUser currentUser() {
         return toHelixUser(authService.getCurrentUser());
     }
 
-/**
- * Danh sách: listPapers.
- */
-    public List<HelixPaper> listPapers(String category, String excludeId, Integer limit, String q, Long topicId) {
+    public List<HelixPaper> listPapers(String category, String excludeId, Integer limit, String q, Long keywordId) {
         int pageSize = limit != null && limit > 0 ? Math.min(limit, 100) : 100;
         Pageable pageable = PageRequest.of(0, pageSize, Sort.by("citationCount").descending());
         String query = (q == null || q.isBlank()) ? null : q;
         Page<Paper> page;
-        if (topicId != null) {
+        if (keywordId != null) {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, topicId, null, pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, keywordId, null, null, null, null, null, pageable);
         } else if (query == null) {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, null, null, null, pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, null, null, null, null, null, null, null, pageable);
         } else {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, null, pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, null, null, null, null, null, pageable);
         }
         List<Paper> paperEntities = page.getContent();
         List<Long> paperIds = paperEntities.stream().map(Paper::getId).toList();
@@ -137,17 +125,11 @@ public class HelixApiService {
         return papers;
     }
 
-/**
- * Lấy dữ liệu: getPaper.
- */
     public HelixPaper getPaper(String id) {
         return toHelixPaper(paperService.getById(Long.parseLong(id)));
     }
 
     @Transactional(readOnly = true)
-/**
- * Lấy dữ liệu: getAuthorProfile.
- */
     public HelixAuthorProfile getAuthorProfile(String id) {
         long authorId = Long.parseLong(id);
         AuthorResponse author = authorService.getById(authorId);
@@ -163,14 +145,11 @@ public class HelixApiService {
                 citations,
                 estimateHIndex(citations),
                 round(Math.min(99, Math.log10(citations + 1) * 22)),
-                author.getOpenAlexId(),
-                author.getOpenAlexId() != null ? "OpenAlex" : "Local DB");
+                author.getSourceIdentifier(),
+                author.getSourceType() != null ? author.getSourceType() : "Local DB");
     }
 
     @Transactional(readOnly = true)
-/**
- * Danh sách: listFeaturedAuthors.
- */
     public List<HelixAuthor> listFeaturedAuthors(int limit) {
         int size = Math.max(1, Math.min(limit, 50));
         return authorService.getFeatured(PageRequest.of(0, size)).getContent().stream()
@@ -185,9 +164,6 @@ public class HelixApiService {
                 .toList();
     }
 
-/**
- * Danh sách: listAuthorPapers.
- */
     public List<HelixPaper> listAuthorPapers(String authorId, Integer limit) {
         int size = limit != null && limit > 0 ? Math.min(limit, 100) : 50;
         var page = authorService.getPapersByAuthor(Long.parseLong(authorId), PageRequest.of(0, size));
@@ -202,56 +178,77 @@ public class HelixApiService {
                 .toList();
     }
 
-/**
- * Danh sách: listTrendingTopics.
- */
     public List<HelixTopicTrend> listTrendingTopics(int limit) {
-        return selectConsecutiveTrending(limit).stream()
+        return keywordTrendService.findTrendingTopics().stream()
+                .limit(limit)
                 .map(topic -> new HelixTopicTrend(
                         String.valueOf(topic.getTopicId()),
                         topic.getTopicName(),
                         topic.getPaperCount(),
-                        topic.getTrendScore() != null ? topic.getTrendScore().doubleValue() : 0,
+                        topic.getTrendScore() != null ? topic.getTrendScore().doubleValue() : 0.0,
                         topic.getRank()))
                 .toList();
     }
 
-/**
- * Lấy dữ liệu: getTopicDetail.
- */
     public HelixTopicDetail getTopicDetail(String id) {
-        TopicResponse topic = topicService.getById(Long.parseLong(id));
-        var monthly = topicTrendService.getCurrentMonthTrend(topic.getId());
-        double score = monthly.getTrendScore() != null ? monthly.getTrendScore().doubleValue() : 0.0;
-        int paperCount = monthly.getPaperCount();
-        return new HelixTopicDetail(
-                String.valueOf(topic.getId()),
-                topic.getName(),
-                topic.getDescription(),
-                paperCount,
-                score);
+        long hash = Long.parseLong(id);
+        TrendingTopicResponse matched = keywordTrendService.findTrendingTopics().stream()
+                .filter(t -> t.getTopicId() == hash)
+                .findFirst()
+                .orElse(null);
+        if (matched != null) {
+            return new HelixTopicDetail(
+                    String.valueOf(matched.getTopicId()),
+                    matched.getTopicName(),
+                    matched.getDescription(),
+                    matched.getPaperCount(),
+                    matched.getTrendScore() != null ? matched.getTrendScore().doubleValue() : 0.0);
+        }
+        return new HelixTopicDetail(id, "General", "General research field", 0, 0.0);
     }
 
-/**
- * Danh sách: listPapersByTopic.
- */
+    @Transactional(readOnly = true)
     public List<HelixPaper> listPapersByTopic(String topicId, Integer limit) {
-        return listPapers(null, null, limit, null, Long.parseLong(topicId));
+        int pageSize = limit != null && limit > 0 ? Math.min(limit, 100) : 50;
+
+        // Resolve domain name from topicId hash
+        long hash = Long.parseLong(topicId);
+        String domain = keywordTrendService.findTrendingTopics().stream()
+                .filter(t -> t.getTopicId() == hash)
+                .map(TrendingTopicResponse::getTopicName)
+                .findFirst()
+                .orElse(null);
+
+        if (domain == null) {
+            return List.of();
+        }
+
+        // Fetch papers with any keyword in this domain
+        List<Paper> paperEntities = paperRepository.findByKeywordDomain(domain);
+        if (paperEntities.size() > pageSize) {
+            paperEntities = paperEntities.subList(0, pageSize);
+        }
+        List<Long> paperIds = paperEntities.stream().map(Paper::getId).toList();
+        Map<Long, List<HelixAuthorRef>> authorRefsByPaper = loadAuthorRefsByPaper(paperIds);
+        Map<Long, PaperTopicMeta> topicMetaByPaper = loadPaperTopicMeta(paperIds);
+
+        return PaperMapper.toResponseList(paperEntities).stream()
+                .map(p -> toHelixPaperSummary(
+                        p,
+                        authorRefsByPaper.getOrDefault(p.getId(), List.of()),
+                        topicMetaByPaper.get(p.getId())))
+                .toList();
     }
 
-/**
- * Xử lý nghiệp vụ: analyticsSnapshot.
- */
+    @Transactional(readOnly = true)
     public HelixAnalyticsSnapshot analyticsSnapshot() {
         var stats = adminService.getSystemStats();
-        // Topic trend: 3 tháng liên tiếp >= 15%
-        List<TrendingTopicResponse> monthlyTop = topicTrendService.findTopByTrendScore(10);
-        List<TrendingTopicResponse> topicTrends = selectConsecutiveTrending(10);
-        List<TrendingTopicResponse> forDisplay = topicTrends.isEmpty() ? monthlyTop : topicTrends;
+        List<TrendingKeywordResponse> monthlyTop = keywordTrendService.findTopByTrendScore(10);
+        List<TrendingTopicResponse> topicTrends = keywordTrendService.findTrendingTopics();
         var authorsPage = authorService.getFeatured(PageRequest.of(0, 10));
 
         double avgMonthlyTrend = monthlyTop.stream()
-                .map(TrendingTopicResponse::getTrendScore)
+                .map(TrendingKeywordResponse::getTrendScore)
                 .filter(Objects::nonNull)
                 .mapToDouble(BigDecimal::doubleValue)
                 .average()
@@ -271,19 +268,21 @@ public class HelixApiService {
                 (int) stats.getTotalAuthors());
 
         List<HelixPublicationVelocityPoint> velocity = buildPublicationVelocity();
-        List<HelixCategorySlice> slices = buildCategorySlices(monthlyTop);
-        List<HelixRadarFieldPoint> radar = buildRadarFields(monthlyTop);
+        List<HelixCategorySlice> slices = buildCategorySlices(topicTrends);
+        List<HelixRadarFieldPoint> radar = buildRadarFields(topicTrends);
         List<HelixHeatmapCell> heatmap = buildHeatmap((int) stats.getTotalPapers());
-        List<HelixKeyword> keywords = forDisplay.stream()
+        
+        List<HelixKeyword> keywords = monthlyTop.stream()
                 .limit(8)
-                .map(t -> new HelixKeyword(
-                        String.valueOf(t.getTopicId()),
-                        t.getTopicName(),
-                        t.getPaperCount(),
-                        t.getTrendScore() != null ? t.getTrendScore().doubleValue() : 0,
-                        topicTrends.isEmpty() ? 1 : 3,
-                        "Research"))
+                .map(k -> new HelixKeyword(
+                        String.valueOf(k.getKeywordId()),
+                        k.getTerm(),
+                        k.getPaperCount(),
+                        k.getTrendScore() != null ? k.getTrendScore().doubleValue() : 0,
+                        3,
+                        k.getDomain() != null ? k.getDomain() : "Research"))
                 .toList();
+
         List<HelixAuthor> helixAuthors = authorsPage.getContent().stream()
                 .map(a -> new HelixAuthor(
                         String.valueOf(a.getId()),
@@ -294,7 +293,8 @@ public class HelixApiService {
                         estimateHIndex(a.getCitationCount()),
                         round(Math.min(99, a.getCitationCount() / 10.0))))
                 .toList();
-        List<HelixTopicTrend> helixTopics = forDisplay.stream()
+
+        List<HelixTopicTrend> helixTopics = topicTrends.stream()
                 .map(t -> new HelixTopicTrend(
                         String.valueOf(t.getTopicId()),
                         t.getTopicName(),
@@ -315,21 +315,6 @@ public class HelixApiService {
                 dashboardHighlightService.buildHighlights());
     }
 
-    /** Topic trend chính thức: 3 tháng liên tiếp có trendScore >= 15%. */
-    private List<TrendingTopicResponse> selectConsecutiveTrending(int limit) {
-        int size = Math.max(1, Math.min(limit, 50));
-        return topicTrendService.findTrendingTopicResponses().stream()
-                .filter(t -> t.getTrendScore() != null)
-                .sorted(Comparator.comparing(TrendingTopicResponse::getTrendScore)
-                        .reversed()
-                        .thenComparing(TrendingTopicResponse::getPaperCount, Comparator.reverseOrder()))
-                .limit(size)
-                .toList();
-    }
-
-/**
- * Danh sách: listNotifications.
- */
     public List<HelixNotification> listNotifications() {
         var page = notificationService.listForCurrentUser(PageRequest.of(0, 20));
         List<HelixNotification> items = new ArrayList<>();
@@ -349,66 +334,42 @@ public class HelixApiService {
         return items;
     }
 
-/**
- * Xử lý nghiệp vụ: markNotificationRead.
- */
     public void markNotificationRead(Long notificationId) {
         notificationService.markAsRead(notificationId);
     }
 
-/**
- * Xử lý nghiệp vụ: markAllNotificationsRead.
- */
     public void markAllNotificationsRead() {
         notificationService.markAllAsRead();
     }
 
-/**
- * Danh sách: listCollections.
- */
     public List<HelixCollection> listCollections() {
         return collectionService.listForCurrentUser().stream()
                 .map(c -> toHelixCollection(c.getId()))
                 .toList();
     }
 
-/**
- * Lấy dữ liệu: getCollection.
- */
     public HelixCollection getCollection(String id) {
         return toHelixCollection(Long.parseLong(id));
     }
 
     @Transactional
-/**
- * Tạo hoặc lưu: createCollection.
- */
     public HelixCollection createCollection(String name) {
         var created = collectionService.create(CollectionRequest.builder().name(name).build());
         return toHelixCollection(created.getId());
     }
 
     @Transactional
-/**
- * Cập nhật: updateCollection.
- */
     public HelixCollection updateCollection(String id, String name) {
         collectionService.update(Long.parseLong(id), CollectionRequest.builder().name(name).build());
         return toHelixCollection(Long.parseLong(id));
     }
 
     @Transactional
-/**
- * Xóa: deleteCollection.
- */
     public void deleteCollection(String id) {
         collectionService.delete(Long.parseLong(id));
     }
 
     @Transactional
-/**
- * Tạo hoặc lưu: savePaperToCollections.
- */
     public List<HelixCollection> savePaperToCollections(HelixSavePaperRequest request) {
         Long paperId = Long.parseLong(request.paperId());
         Long userId = SecurityUtils.getCurrentUserId();
@@ -428,17 +389,11 @@ public class HelixApiService {
     }
 
     @Transactional
-/**
- * Xóa: removePaperFromCollection.
- */
     public HelixCollection removePaperFromCollection(HelixRemovePaperRequest request) {
         collectionService.removePaper(Long.parseLong(request.collectionId()), Long.parseLong(request.paperId()));
         return toHelixCollection(Long.parseLong(request.collectionId()));
     }
 
-/**
- * Xử lý nghiệp vụ: adminOverview.
- */
     @Transactional(readOnly = true)
     public HelixAdminOverview adminOverview() {
         List<HelixAuditLog> logs = syncLogRepository.findRecentWithAdmin(PageRequest.of(0, 10)).stream()
@@ -457,29 +412,19 @@ public class HelixApiService {
                 .stream()
                 .map(this::toPendingReview)
                 .toList();
-        List<HelixTopicAnomaly> anomalies = topicAnomalyService.listCurrentAnomalies(10).stream()
-                .map(a -> new HelixTopicAnomaly(
-                        String.valueOf(a.getTopicId()),
-                        a.getTopicName(),
-                        a.getTrendScore() != null ? a.getTrendScore().doubleValue() : 0,
-                        a.getPaperCount(),
-                        a.getDetectedAt() != null ? a.getDetectedAt().toString() : ""))
-                .toList();
+
+        // Topic anomalies are removed, so return an empty list
+        List<HelixTopicAnomaly> anomalies = List.of();
+
         return new HelixAdminOverview(
                 logs, pending, anomalies, paperReviewService.countByReviewStatus(PaperReviewStatus.PENDING_REVIEW));
     }
 
-/**
- * Xử lý nghiệp vụ: triggerAdminSync.
- */
     public HelixSyncResult triggerAdminSync() {
         SyncLogResponse log = adminService.triggerSync();
         return new HelixSyncResult(log.getPapersFetched(), log.getStatus().name(), toSyncMessage(log));
     }
 
-/**
- * Xử lý nghiệp vụ: latestSyncStatus.
- */
     public HelixSyncResult latestSyncStatus() {
         SyncLogResponse log = paperSyncService.getLatestSyncStatus();
         if (log == null) {
@@ -488,17 +433,11 @@ public class HelixApiService {
         return new HelixSyncResult(log.getPapersFetched(), log.getStatus().name(), toSyncMessage(log));
     }
 
-/**
- * Xử lý nghiệp vụ: resetStaleSync.
- */
     public HelixSyncResult resetStaleSync() {
         paperSyncService.resetStaleRunningSyncs();
         return latestSyncStatus();
     }
 
-/**
- * Ánh xạ sang DTO/phản hồi: toHelixCollection.
- */
     private HelixCollection toHelixCollection(Long collectionId) {
         CollectionResponse c = collectionService.getById(collectionId);
         List<String> paperIds = collectionService.listPapers(collectionId).stream()
@@ -511,17 +450,14 @@ public class HelixApiService {
                 c.getCreatedAt() != null ? c.getCreatedAt().toString() : "");
     }
 
-/**
- * Ánh xạ sang DTO/phản hồi: toPendingReview.
- */
     private HelixPendingReviewPaper toPendingReview(Paper paper) {
         int year = paper.getPublicationDate() != null ? paper.getPublicationDate().getYear() : LocalDate.now().getYear();
         Map<Long, List<HelixAuthorRef>> refs = loadAuthorRefsByPaper(List.of(paper.getId()));
         List<String> authors = refs.getOrDefault(paper.getId(), List.of()).stream()
                 .map(HelixAuthorRef::name)
                 .toList();
-        List<HelixTopicRef> keywords = paperTopicRepository.findByPaperId(paper.getId()).stream()
-                .map(pt -> new HelixTopicRef(String.valueOf(pt.getTopic().getId()), pt.getTopic().getName()))
+        List<HelixTopicRef> keywords = paperKeywordRepository.findByPaperId(paper.getId()).stream()
+                .map(pk -> new HelixTopicRef(String.valueOf(pk.getKeyword().getKeywordId()), pk.getKeyword().getTerm()))
                 .toList();
         return new HelixPendingReviewPaper(
                 String.valueOf(paper.getId()),
@@ -540,9 +476,6 @@ public class HelixApiService {
                 paper.getReviewStatus() != null ? paper.getReviewStatus().name() : "NONE");
     }
 
-/**
- * Ánh xạ sang DTO/phản hồi: toSyncMessage.
- */
     private String toSyncMessage(SyncLogResponse log) {
         if (log.getStatus() == SyncStatus.RUNNING) {
             return "Syncing metadata from OpenAlex…";
@@ -554,24 +487,15 @@ public class HelixApiService {
         return "Failed · " + (err != null ? err : "see audit log");
     }
 
-/**
- * Ánh xạ sang DTO/phản hồi: toHelixSession.
- */
     private HelixAuthSession toHelixSession(AuthResponse auth) {
         return new HelixAuthSession(toHelixUser(auth.getUser()), auth.getAccessToken());
     }
 
-/**
- * Ánh xạ sang DTO/phản hồi: toHelixUser.
- */
     private HelixUser toHelixUser(UserResponse user) {
         String role = user.getRole() == UserRole.SUPER_ADMIN ? "SUPER_ADMIN" : user.getRole().name();
         return new HelixUser(user.getFullName(), user.getEmail(), role);
     }
 
-/**
- * Xử lý nghiệp vụ: loadAuthorRefsByPaper.
- */
     private Map<Long, List<HelixAuthorRef>> loadAuthorRefsByPaper(List<Long> paperIds) {
         if (paperIds == null || paperIds.isEmpty()) {
             return Map.of();
@@ -585,16 +509,13 @@ public class HelixApiService {
         return map;
     }
 
-/**
- * Ánh xạ sang DTO/phản hồi: toHelixPaper.
- */
     private HelixPaper toHelixPaper(PaperDetailResponse detail) {
         List<String> authors = detail.getAuthors() != null
                 ? detail.getAuthors().stream().map(AuthorResponse::getName).toList()
                 : List.of();
-        List<HelixTopicRef> keywords = detail.getTopics() != null
-                ? detail.getTopics().stream()
-                        .map(t -> new HelixTopicRef(String.valueOf(t.getId()), t.getName()))
+        List<HelixTopicRef> keywords = detail.getKeywords() != null
+                ? detail.getKeywords().stream()
+                        .map(k -> new HelixTopicRef(String.valueOf(k.getKeywordId()), k.getTerm()))
                         .toList()
                 : List.of();
         int year = detail.getPublicationDate() != null
@@ -606,10 +527,10 @@ public class HelixApiService {
                         .map(a -> new HelixAuthorRef(String.valueOf(a.getId()), a.getName()))
                         .toList()
                 : List.of();
-        List<Long> topicIds = detail.getTopics() != null
-                ? detail.getTopics().stream().map(TopicResponse::getId).toList()
+        List<Long> keywordIds = detail.getKeywords() != null
+                ? detail.getKeywords().stream().map(KeywordResponse::getKeywordId).toList()
                 : List.of();
-        double trendScore = maxMonthlyTopicTrendScore(topicIds);
+        double trendScore = maxMonthlyKeywordTrendScore(keywordIds);
         return new HelixPaper(
                 String.valueOf(detail.getId()),
                 detail.getTitle(),
@@ -628,9 +549,6 @@ public class HelixApiService {
                 refs);
     }
 
-/**
- * Ánh xạ sang DTO/phản hồi: toHelixPaperSummary.
- */
     private HelixPaper toHelixPaperSummary(PaperResponse p, List<HelixAuthorRef> authorRefs, PaperTopicMeta topicMeta) {
         int year = p.getPublicationDate() != null ? p.getPublicationDate().getYear() : LocalDate.now().getYear();
         List<String> authors = authorRefs.stream().map(HelixAuthorRef::name).toList();
@@ -663,27 +581,27 @@ public class HelixApiService {
         if (paperIds == null || paperIds.isEmpty()) {
             return Map.of();
         }
-        List<PaperTopic> allLinks = paperTopicRepository.findByPaperIdInWithTopic(paperIds);
+        List<PaperKeyword> allLinks = paperKeywordRepository.findByPaperIdInWithKeyword(paperIds);
         LocalDate now = LocalDate.now();
-        Map<Long, Double> trendByTopicId = loadMonthlyTopicTrendScores(
-                allLinks.stream().map(pt -> pt.getTopic().getId()).collect(Collectors.toSet()),
+        Map<Long, Double> trendByKeywordId = loadMonthlyKeywordTrendScores(
+                allLinks.stream().map(pk -> pk.getKeyword().getKeywordId()).collect(Collectors.toSet()),
                 now.getYear(),
                 now.getMonthValue());
 
-        Map<Long, List<PaperTopic>> topicsByPaper = new HashMap<>();
-        for (PaperTopic pt : allLinks) {
-            topicsByPaper.computeIfAbsent(pt.getPaper().getId(), k -> new ArrayList<>()).add(pt);
+        Map<Long, List<PaperKeyword>> keywordsByPaper = new HashMap<>();
+        for (PaperKeyword pk : allLinks) {
+            keywordsByPaper.computeIfAbsent(pk.getPaper().getId(), k -> new ArrayList<>()).add(pk);
         }
 
         Map<Long, PaperTopicMeta> result = new HashMap<>();
         for (Long paperId : paperIds) {
-            List<PaperTopic> links = topicsByPaper.getOrDefault(paperId, List.of());
+            List<PaperKeyword> links = keywordsByPaper.getOrDefault(paperId, List.of());
             List<HelixTopicRef> keywords = links.stream()
-                    .map(pt -> new HelixTopicRef(String.valueOf(pt.getTopic().getId()), pt.getTopic().getName()))
+                    .map(pk -> new HelixTopicRef(String.valueOf(pk.getKeyword().getKeywordId()), pk.getKeyword().getTerm()))
                     .distinct()
                     .toList();
             double trendScore = links.stream()
-                    .mapToDouble(pt -> trendByTopicId.getOrDefault(pt.getTopic().getId(), 0.0))
+                    .mapToDouble(pk -> trendByKeywordId.getOrDefault(pk.getKeyword().getKeywordId(), 0.0))
                     .max()
                     .orElse(0);
             String category = keywords.isEmpty() ? "General" : keywords.get(0).name();
@@ -692,34 +610,32 @@ public class HelixApiService {
         return result;
     }
 
-    /** % tăng trưởng trong tháng (không áp rule 3 tháng liên tiếp). */
-    private Map<Long, Double> loadMonthlyTopicTrendScores(Set<Long> topicIds, int year, int month) {
-        if (topicIds == null || topicIds.isEmpty()) {
+    private Map<Long, Double> loadMonthlyKeywordTrendScores(Set<Long> keywordIds, int year, int month) {
+        if (keywordIds == null || keywordIds.isEmpty()) {
             return Map.of();
         }
         Map<Long, Double> scores = new HashMap<>();
-        for (TopicTrend trend : topicTrendRepository.findByTopicIdInAndYearAndMonth(topicIds, year, month)) {
-            if (trend.getTrendScore() != null) {
-                scores.put(trend.getTopic().getId(), trend.getTrendScore().doubleValue());
+        List<PublicationTrend> trends = publicationTrendRepository.findByYearAndMonth(year, month);
+        for (PublicationTrend trend : trends) {
+            Long kwId = trend.getKeyword().getKeywordId();
+            if (keywordIds.contains(kwId) && trend.getDeltaPercent() != null) {
+                scores.put(kwId, trend.getDeltaPercent().doubleValue());
             }
         }
         return scores;
     }
 
-    private double maxMonthlyTopicTrendScore(List<Long> topicIds) {
-        if (topicIds == null || topicIds.isEmpty()) {
+    private double maxMonthlyKeywordTrendScore(List<Long> keywordIds) {
+        if (keywordIds == null || keywordIds.isEmpty()) {
             return 0;
         }
         LocalDate now = LocalDate.now();
         Map<Long, Double> scores =
-                loadMonthlyTopicTrendScores(new HashSet<>(topicIds), now.getYear(), now.getMonthValue());
+                loadMonthlyKeywordTrendScores(new HashSet<>(keywordIds), now.getYear(), now.getMonthValue());
         return round(
-                topicIds.stream().mapToDouble(id -> scores.getOrDefault(id, 0.0)).max().orElse(0));
+                keywordIds.stream().mapToDouble(id -> scores.getOrDefault(id, 0.0)).max().orElse(0));
     }
 
-/**
- * Tạo/ghép dữ liệu: buildPublicationVelocity.
- */
     private List<HelixPublicationVelocityPoint> buildPublicationVelocity() {
         List<HelixPublicationVelocityPoint> points = new ArrayList<>();
         YearMonth cursor = YearMonth.now().minusMonths(11);
@@ -732,9 +648,6 @@ public class HelixApiService {
         return points;
     }
 
-/**
- * Tạo/ghép dữ liệu: buildCategorySlices.
- */
     private List<HelixCategorySlice> buildCategorySlices(List<TrendingTopicResponse> trending) {
         String[] fills = {"#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"};
         List<HelixCategorySlice> slices = new ArrayList<>();
@@ -749,9 +662,6 @@ public class HelixApiService {
         return slices;
     }
 
-/**
- * Tạo/ghép dữ liệu: buildRadarFields.
- */
     private List<HelixRadarFieldPoint> buildRadarFields(List<TrendingTopicResponse> trending) {
         return trending.stream()
                 .limit(6)
@@ -762,9 +672,6 @@ public class HelixApiService {
                 .toList();
     }
 
-/**
- * Tạo/ghép dữ liệu: buildHeatmap.
- */
     private List<HelixHeatmapCell> buildHeatmap(int seed) {
         List<HelixHeatmapCell> cells = new ArrayList<>();
         for (int w = 1; w <= 12; w++) {
@@ -776,9 +683,6 @@ public class HelixApiService {
         return cells;
     }
 
-/**
- * Tạo/ghép dữ liệu: buildFallbackNotifications.
- */
     private List<HelixNotification> buildFallbackNotifications() {
         if (paperRepository.countByStatus(PaperStatus.ACTIVE) == 0) {
             return List.of(new HelixNotification(
@@ -800,9 +704,6 @@ public class HelixApiService {
                 .toList();
     }
 
-/**
- * Chuyển đổi entity sang DTO: mapSource.
- */
     private String resolvePaperTitle(Paper paper) {
         String title = paper.getTitle();
         if (!isLikelyCorruptedText(title)) {
@@ -853,17 +754,11 @@ public class HelixApiService {
         };
     }
 
-/**
- * Xử lý nghiệp vụ: estimateImpactFactor.
- */
     private double estimateImpactFactor(int citations, int year) {
         int age = Math.max(1, LocalDate.now().getYear() - year);
         return round(citations / (double) age / 10.0);
     }
 
-/**
- * Xử lý nghiệp vụ: estimateHIndex.
- */
     private int estimateHIndex(int citations) {
         int h = 0;
         while ((h + 1) * (h + 1) <= citations) {
@@ -872,9 +767,6 @@ public class HelixApiService {
         return Math.max(h, 1);
     }
 
-/**
- * Xử lý nghiệp vụ: formatVolume.
- */
     private String formatVolume(long total) {
         if (total >= 1_000_000) {
             return String.format(Locale.US, "%.1fM", total / 1_000_000.0);
@@ -885,9 +777,6 @@ public class HelixApiService {
         return String.valueOf(total);
     }
 
-/**
- * Xử lý nghiệp vụ: round.
- */
     private double round(double v) {
         return Math.round(v * 10.0) / 10.0;
     }

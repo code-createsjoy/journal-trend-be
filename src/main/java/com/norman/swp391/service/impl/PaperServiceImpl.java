@@ -10,13 +10,25 @@ import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.mapper.PaperMapper;
 import com.norman.swp391.repository.PaperAuthorRepository;
 import com.norman.swp391.repository.PaperRepository;
-import com.norman.swp391.repository.PaperTopicRepository;
+import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.service.PaperService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.norman.swp391.entity.Author;
+import com.norman.swp391.entity.Keyword;
+import com.norman.swp391.entity.PaperAuthor;
+import com.norman.swp391.entity.PaperKeyword;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.time.LocalDate;
+import java.util.Comparator;
 
 /**
  * Triển khai dịch vụ bài báo.
@@ -26,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaperServiceImpl implements PaperService {
 
     private final PaperRepository paperRepository;
-    private final PaperTopicRepository paperTopicRepository;
+    private final PaperKeywordRepository paperKeywordRepository;
     private final PaperAuthorRepository paperAuthorRepository;
 
     @Override
@@ -34,11 +46,70 @@ public class PaperServiceImpl implements PaperService {
 /**
  * Tìm kiếm/lọc: search.
  */
-    public PageResponse<PaperResponse> search(String q, Long topicId, Long authorId, Pageable pageable) {
+    public PageResponse<PaperDetailResponse> search(String q, Long topicId, Long authorId, Integer fromYear, Integer toYear, String category, Integer minCitations, Pageable pageable) {
         String query = (q != null && q.isBlank()) ? null : q;
+        String cat = (category != null && category.trim().equalsIgnoreCase("all")) ? null : category;
+        
+        Sort sanitizedSort = pageable.getSort();
+        if (sanitizedSort.isSorted()) {
+            sanitizedSort = Sort.by(sanitizedSort.stream()
+                .map(order -> "trendScore".equals(order.getProperty()) 
+                    ? new Sort.Order(order.getDirection(), "citationCount") 
+                    : order)
+                .toList());
+        }
+        Pageable safePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sanitizedSort);
+
         Page<Paper> page = paperRepository.search(
-                PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, topicId, authorId, pageable);
-        return PageResponse.from(page, PaperMapper.toResponseList(page.getContent()));
+                PaperStatus.ACTIVE,
+                PaperReviewStatus.NONE,
+                query,
+                topicId,
+                authorId,
+                fromYear,
+                toYear,
+                cat,
+                minCitations,
+                safePageable);
+        
+        List<Paper> papers = page.getContent();
+        List<Long> paperIds = papers.stream().map(Paper::getId).toList();
+        
+        Map<Long, List<Author>> authorsByPaperId = loadAuthorsForPapers(paperIds);
+        Map<Long, List<Keyword>> keywordsByPaperId = loadKeywordsForPapers(paperIds);
+        
+        List<PaperDetailResponse> content = papers.stream().map(p -> 
+            PaperMapper.toDetailResponse(p, 
+                keywordsByPaperId.getOrDefault(p.getId(), Collections.emptyList()), 
+                authorsByPaperId.getOrDefault(p.getId(), Collections.emptyList()))
+        ).toList();
+        
+        return PageResponse.from(page, content);
+    }
+
+    private Map<Long, List<Author>> loadAuthorsForPapers(List<Long> paperIds) {
+        if (paperIds.isEmpty()) return Collections.emptyMap();
+        return paperAuthorRepository.findByPaperIdInWithAuthor(paperIds).stream()
+                .collect(Collectors.groupingBy(
+                        pa -> pa.getPaper().getId(),
+                        Collectors.mapping(PaperAuthor::getAuthor, Collectors.toList())
+                ));
+    }
+
+    private Map<Long, List<Keyword>> loadKeywordsForPapers(List<Long> paperIds) {
+        if (paperIds.isEmpty()) return Collections.emptyMap();
+        return paperKeywordRepository.findByPaperIdInWithKeyword(paperIds).stream()
+                .collect(Collectors.groupingBy(
+                        pk -> pk.getPaper().getId(),
+                        Collectors.mapping(PaperKeyword::getKeyword, Collectors.toList())
+                ));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<PaperResponse> searchByDomain(String domain) {
+        java.util.List<Paper> papers = paperRepository.findByKeywordDomain(domain);
+        return PaperMapper.toResponseList(papers);
     }
 
     @Override
@@ -53,7 +124,18 @@ public class PaperServiceImpl implements PaperService {
                 .orElseThrow(() -> new ResourceNotFoundException("Paper", id));
         return PaperMapper.toDetailResponseFromRelations(
                 paper,
-                paperTopicRepository.findByPaperId(id),
+                paperKeywordRepository.findByPaperId(id),
                 paperAuthorRepository.findByPaperId(id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Integer> getAvailableYears() {
+        return paperRepository.findAllPublicationDates(PaperStatus.ACTIVE)
+                .stream()
+                .map(LocalDate::getYear)
+                .distinct()
+                .sorted(Comparator.reverseOrder())
+                .toList();
     }
 }

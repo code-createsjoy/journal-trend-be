@@ -7,6 +7,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
 /**
  * Kho truy cập thông báo.
  */
@@ -27,6 +30,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
  */
     boolean existsByUserIdAndPaperId(Long userId, Long paperId);
 
-    boolean existsByUserIdAndTopicIdAndTriggerType(
-            Long userId, Long topicId, NotificationTriggerType triggerType);
+    @Query("SELECT CASE WHEN COUNT(n) > 0 THEN true ELSE false END FROM Notification n WHERE n.user.id = :userId AND n.keyword.keywordId = :keywordId AND n.triggerType = :triggerType")
+    boolean existsByUserIdAndKeywordIdAndTriggerType(
+            @Param("userId") Long userId, 
+            @Param("keywordId") Long keywordId, 
+            @Param("triggerType") NotificationTriggerType triggerType);
 }
