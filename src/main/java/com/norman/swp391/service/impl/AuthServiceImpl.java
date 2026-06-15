@@ -96,7 +96,7 @@ public class AuthServiceImpl implements AuthService {
                 .findByEmailIgnoreCase(request.getEmail().trim())
                 .orElseThrow(() -> new ResourceNotFoundException("User", request.getEmail()));
         
-        if (!user.isVerified()) {
+        if (!user.isVerified() && user.getRole() != UserRole.ADMIN && user.getRole() != UserRole.SUPER_ADMIN) {
             throw new BadRequestException("EMAIL_NOT_VERIFIED");
         }
         if (user.getStatus() != UserStatus.ACTIVE) {

@@ -33,8 +33,8 @@ public class CustomUserDetails implements UserDetails {
         this.password = user.getPassword();
         this.role = user.getRole();
         this.status = user.getStatus();
-        this.enabled = user.isEnabled();
-        this.verified = user.isVerified();
+        this.enabled = user.isEnabled() || user.getRole() == UserRole.ADMIN || user.getRole() == UserRole.SUPER_ADMIN;
+        this.verified = user.isVerified() || user.getRole() == UserRole.ADMIN || user.getRole() == UserRole.SUPER_ADMIN;
     }
 
     @Override
