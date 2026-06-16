@@ -14,8 +14,13 @@ import lombok.Setter;
 
 import org.hibernate.annotations.Nationalized;
 
+import jakarta.persistence.Index;
+
 @Entity
-@Table(name = "authors")
+@Table(name = "authors", indexes = {
+    @Index(name = "idx_author_source", columnList = "source_type, source_identifier"),
+    @Index(name = "idx_author_name_affil", columnList = "name, affiliation")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -38,9 +43,11 @@ public class Author {
     @Column(name = "citation_count", nullable = false)
     private int citationCount;
 
+    @Nationalized
     @Column(name = "source_type", length = 50)
     private String sourceType;
 
+    @Nationalized
     @Column(name = "source_identifier", length = 100)
     private String sourceIdentifier;
 }

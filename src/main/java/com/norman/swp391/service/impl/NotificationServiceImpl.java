@@ -106,6 +106,12 @@ public class NotificationServiceImpl implements NotificationService {
         if (newPaperIds == null || newPaperIds.isEmpty()) {
             return;
         }
+        
+        // Fast path: if there are no followers at all, skip the 100,000+ queries.
+        if (followKeywordRepository.count() == 0 && followJournalRepository.count() == 0) {
+            return;
+        }
+
         Set<Long> notifiedUsers = new HashSet<>();
         for (Long paperId : newPaperIds) {
             Paper paper = paperRepository.findById(paperId).orElse(null);

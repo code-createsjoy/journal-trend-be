@@ -26,6 +26,10 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.SQLServerDialect
         format_sql: true
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}
     port: ${MAIL_PORT:587}
@@ -63,16 +67,16 @@ app:
     min-keyword-papers: ${MIN_KEYWORD_PAPERS:5}
     trending-threshold-percent: ${TRENDING_THRESHOLD:15}
     trending-consecutive-months: ${TRENDING_CONSECUTIVE_MONTHS:3}
-    max-pages: ${SYNC_MAX_PAGES:5}
-    max-papers-per-run: ${SYNC_MAX_PAPERS_PER_RUN:1000}
-    from-publication-date: ${SYNC_FROM_PUBLICATION_DATE:2025-01-01}
+    max-pages: ${SYNC_MAX_PAGES:20}
+    max-papers-per-run: ${SYNC_MAX_PAPERS_PER_RUN:2000}
+    from-publication-date: ${SYNC_FROM_PUBLICATION_DATE:2026-01-01}
     ingest-batch-size: ${SYNC_INGEST_BATCH_SIZE:25}
     enrich-on-sync: ${SYNC_ENRICH_ON_SYNC:false}
     enrich-batch-size: ${SYNC_ENRICH_BATCH_SIZE:20}
     enrich-delay-ms: ${SYNC_ENRICH_DELAY_MS:50}
     semantic-scholar-on-sync: ${SYNC_SEMANTIC_SCHOLAR_ON_SYNC:false}
-    external-enrich-on-ingest: ${SYNC_EXTERNAL_ENRICH_ON_INGEST:false}
-    stale-sync-minutes: ${SYNC_STALE_MINUTES:10}
+    external-enrich-on-ingest: false
+    stale-sync-minutes: ${SYNC_STALE_MINUTES:60}
     http-connect-timeout-ms: ${SYNC_HTTP_CONNECT_TIMEOUT_MS:10000}
     http-read-timeout-ms: ${SYNC_HTTP_READ_TIMEOUT_MS:30000}
     open-alex-retry-attempts: ${SYNC_OPENALEX_RETRIES:3}
