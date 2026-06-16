@@ -31,35 +31,7 @@ public class SemanticScholarClient {
     private final AppProperties appProperties;
     private final RestClient externalApiRestClient;
 
-    /**
-     * Lấy metadata bài báo theo DOI để làm giàu dữ liệu.
-     */
-    public Optional<ExternalPaperMetadata> enrichByDoi(String doi) {
-        String normalizedDoi = normalizeDoi(doi);
-        if (!StringUtils.hasText(normalizedDoi)) {
-            return Optional.empty();
-        }
 
-        String url = UriComponentsBuilder.fromUriString(appProperties.getSemanticScholar().getBaseUrl())
-                .path("/paper/DOI:{doi}")
-                .queryParam("fields", FIELDS)
-                .buildAndExpand(normalizedDoi)
-                .toUriString();
-
-        try {
-            JsonNode paper = fetchJsonWithRetry(url);
-            if (paper == null || paper.isMissingNode()) {
-                return Optional.empty();
-            }
-            return Optional.of(mapToMetadata(paper, normalizedDoi));
-        } catch (HttpClientErrorException.NotFound ex) {
-            log.debug("Semantic Scholar: DOI not found: {}", normalizedDoi);
-            return Optional.empty();
-        } catch (Exception ex) {
-            log.warn("Semantic Scholar error for DOI {}: {}", normalizedDoi, ex.getMessage());
-            return Optional.empty();
-        }
-    }
 
     /**
      * Tìm danh sách bài báo theo từ khóa và trang từ Semantic Scholar.

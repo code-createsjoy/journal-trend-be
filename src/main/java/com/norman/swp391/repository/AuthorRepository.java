@@ -16,12 +16,12 @@ public interface AuthorRepository extends JpaRepository<Author, Long> {
     /**
      * Tìm kiếm: findBySourceTypeAndSourceIdentifierIgnoreCase.
      */
-    Optional<Author> findBySourceTypeAndSourceIdentifierIgnoreCase(String sourceType, String sourceIdentifier);
+    Optional<Author> findBySourceTypeAndSourceIdentifier(String sourceType, String sourceIdentifier);
 
     /**
      * Tìm tác giả đầu tiên theo tên và đơn vị công tác.
      */
-    Optional<Author> findFirstByNameIgnoreCaseAndAffiliationIgnoreCaseOrderByIdAsc(String name, String affiliation);
+    Optional<Author> findFirstByNameAndAffiliationOrderByIdAsc(String name, String affiliation);
 
     /**
      * Tìm kiếm tác giả theo từ khóa trong tên.

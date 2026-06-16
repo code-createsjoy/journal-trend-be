@@ -43,9 +43,9 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         if (hasMetadataConflict(paper, incoming)) {
             paper.setReviewStatus(PaperReviewStatus.PENDING_REVIEW);
             paper.setReviewFlaggedAt(LocalDateTime.now());
-            paper.setConflictTitle(incoming.title());
+            paper.setConflictTitle(truncateText(incoming.title(), 1000));
             paper.setConflictAbstract(incoming.abstractText());
-            paper.setConflictSource(source);
+            paper.setConflictSource(truncateText(source, 50));
             enrichEmptyFieldsOnly(paper, incoming);
         } else {
             enrichEmptyFieldsOnly(paper, incoming);
@@ -164,6 +164,12 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         if (!StringUtils.hasText(paper.getSourceUrl()) && StringUtils.hasText(incoming.landingPageUrl())) {
             paper.setSourceUrl(incoming.landingPageUrl());
         }
+    }
+
+    private String truncateText(String text, int maxLength) {
+        if (text == null) return null;
+        if (text.length() <= maxLength) return text;
+        return text.substring(0, maxLength - 3) + "...";
     }
 
     private boolean hasMetadataConflict(Paper paper, ExternalPaperMetadata incoming) {

@@ -166,7 +166,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             int maxPages = Math.max(1, appProperties.getSync().getMaxPages());
             int maxPapers = Math.max(1, appProperties.getSync().getMaxPapersPerRun());
             String fromDate = appProperties.getSync().getFromPublicationDate();
-            boolean externalOnIngest = appProperties.getSync().isExternalEnrichOnIngest();
             int ingestBatchSize = Math.max(1, appProperties.getSync().getIngestBatchSize());
             List<ExternalPaperMetadata> ingestBuffer = new ArrayList<>(ingestBatchSize);
 
@@ -228,14 +227,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                                 }
                             }
 
-                            ExternalPaperMetadata processed = metadata;
-                            if ("OpenAlex".equals(source) && externalOnIngest && StringUtils.hasText(metadata.doi())) {
-                                processed = semanticScholarClient
-                                        .enrichByDoi(metadata.doi())
-                                        .map(enrich -> mergeMetadata(metadata, enrich))
-                                        .orElse(metadata);
-                            }
-                            ingestBuffer.add(processed);
+                            ingestBuffer.add(metadata);
                             if (ingestBuffer.size() >= ingestBatchSize) {
                                 totalFetched += flushIngest(ingestBuffer, newPaperIds, maxPapers - totalFetched);
                                 ingestBuffer.clear();
@@ -307,67 +299,12 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return saved != null ? saved : 0;
     }
 
-    private ExternalPaperMetadata mergeMetadata(ExternalPaperMetadata base, ExternalPaperMetadata enrich) {
-        return new ExternalPaperMetadata(
-                coalesce(enrich.title(), base.title()),
-                coalesce(enrich.abstractText(), base.abstractText()),
-                coalesce(enrich.doi(), base.doi()),
-                enrich.publicationDate() != null ? enrich.publicationDate() : base.publicationDate(),
-                enrich.citationCount() != null ? enrich.citationCount() : base.citationCount(),
-                mergeKeywords(base.keywords(), enrich.keywords()),
-                mergeAuthors(base.authors(), enrich.authors()),
-                coalesce(enrich.pdfUrl(), base.pdfUrl()),
-                coalesce(enrich.landingPageUrl(), base.landingPageUrl()),
-                enrich.openAccess() != null ? enrich.openAccess() : base.openAccess(),
-                coalesce(enrich.journal(), base.journal()),
-                coalesce(enrich.sourceType(), base.sourceType()),
-                coalesce(enrich.sourceIdentifier(), base.sourceIdentifier()),
-                mergeAuthorDetails(base.authorDetails(), enrich.authorDetails()));
-    }
 
-    private List<ExternalAuthorInfo> mergeAuthorDetails(List<ExternalAuthorInfo> a, List<ExternalAuthorInfo> b) {
-        Set<String> seen = new LinkedHashSet<>();
-        List<ExternalAuthorInfo> merged = new ArrayList<>();
-        for (ExternalAuthorInfo info : a) {
-            String key = StringUtils.hasText(info.sourceIdentifier()) ? info.sourceIdentifier() : info.name();
-            if (seen.add(key)) {
-                merged.add(info);
-            }
-        }
-        for (ExternalAuthorInfo info : b) {
-            String key = StringUtils.hasText(info.sourceIdentifier()) ? info.sourceIdentifier() : info.name();
-            if (seen.add(key)) {
-                merged.add(info);
-            }
-        }
-        return merged;
-    }
 
-    private List<ExternalKeywordInfo> mergeKeywords(List<ExternalKeywordInfo> a, List<ExternalKeywordInfo> b) {
-        Set<String> seen = new LinkedHashSet<>();
-        List<ExternalKeywordInfo> merged = new ArrayList<>();
-        for (ExternalKeywordInfo info : a) {
-            if (seen.add(info.term().toLowerCase().trim())) {
-                merged.add(info);
-            }
-        }
-        for (ExternalKeywordInfo info : b) {
-            if (seen.add(info.term().toLowerCase().trim())) {
-                merged.add(info);
-            }
-        }
-        return merged;
-    }
-
-    private List<String> mergeAuthors(List<String> a, List<String> b) {
-        Set<String> set = new LinkedHashSet<>();
-        set.addAll(a);
-        set.addAll(b);
-        return new ArrayList<>(set);
-    }
-
-    private String coalesce(String preferred, String fallback) {
-        return StringUtils.hasText(preferred) ? preferred : fallback;
+    private String truncateText(String text, int maxLength) {
+        if (text == null) return null;
+        if (text.length() <= maxLength) return text;
+        return text.substring(0, maxLength - 3) + "...";
     }
 
     private Long savePaperWithRelations(ExternalPaperMetadata metadata) {
@@ -377,7 +314,13 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         if (metadata.publicationDate() == null) {
             return null;
         }
-        if (!StringUtils.hasText(metadata.doi()) && !StringUtils.hasText(metadata.sourceIdentifier())) {
+        if (!StringUtils.hasText(metadata.doi())) {
+            return null;
+        }
+        if (!StringUtils.hasText(metadata.abstractText())) {
+            return null;
+        }
+        if (!StringUtils.hasText(metadata.landingPageUrl()) && !StringUtils.hasText(metadata.pdfUrl())) {
             return null;
         }
         if (!StringUtils.hasText(metadata.journal())) {
@@ -394,23 +337,23 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         Paper paper = existing.orElseGet(this::newPaper);
 
         if (isNew) {
-            paper.setTitle(metadata.title());
+            paper.setTitle(truncateText(metadata.title(), 1000));
             paper.setAbstractText(metadata.abstractText());
-            paper.setDoi(metadata.doi());
+            paper.setDoi(truncateText(metadata.doi(), 255));
             if (metadata.publicationDate() != null) {
                 paper.setPublicationDate(metadata.publicationDate());
             }
             if (metadata.citationCount() != null) {
                 paper.setCitationCount(metadata.citationCount());
             }
-            paper.setPdfUrl(metadata.pdfUrl());
-            paper.setSourceUrl(metadata.landingPageUrl());
+            paper.setPdfUrl(truncateText(metadata.pdfUrl(), 500));
+            paper.setSourceUrl(truncateText(metadata.landingPageUrl(), 500));
             paper.setOpenAccess(metadata.openAccess() != null ? metadata.openAccess() : paper.isOpenAccess());
             if (StringUtils.hasText(metadata.sourceIdentifier())) {
-                paper.setSourceType(metadata.sourceType());
-                paper.setSourceIdentifier(metadata.sourceIdentifier());
+                paper.setSourceType(truncateText(metadata.sourceType(), 50));
+                paper.setSourceIdentifier(truncateText(metadata.sourceIdentifier(), 100));
             }
-            paper.setPrimarySource(metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
+            paper.setPrimarySource(metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
             paper.setStatus(PaperStatus.ACTIVE);
             paper.setReviewStatus(PaperReviewStatus.NONE);
             if (paper.getCreatedAt() == null) {
@@ -418,18 +361,16 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             }
             paper = paperRepository.save(paper);
         } else {
-            paper.setPrimarySource(metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
+            paper.setPrimarySource(metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
             paper.setStatus(PaperStatus.ACTIVE);
             
             paperReviewService.applyIncomingMetadata(paper, metadata, metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
-            paper = paperRepository.findById(paper.getId()).orElse(paper);
         }
 
         linkKeywords(paper, metadata.keywords());
         linkAuthors(paper, metadata);
 
         if (StringUtils.hasText(metadata.journal())) {
-            paper = paperRepository.findById(paper.getId()).orElse(paper);
             String domain = metadata.keywords() != null && !metadata.keywords().isEmpty()
                     ? metadata.keywords().get(0).domain()
                     : "General";
@@ -437,12 +378,12 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 var journalEntity = journalService.findOrCreate(metadata.journal(), null, domain);
                 if (journalEntity != null && journalEntity.getId() != null) {
                     paper.setJournalRef(journalRepository.getReferenceById(journalEntity.getId()));
-                    paper.setJournal(journalEntity.getName());
+                    paper.setJournal(truncateText(journalEntity.getName(), 500));
                     paperRepository.save(paper);
                 }
             } catch (Exception ex) {
                 log.debug("Journal link skipped: {}", ex.getMessage());
-                paper.setJournal(metadata.journal());
+                paper.setJournal(truncateText(metadata.journal(), 500));
                 paperRepository.save(paper);
             }
         }
@@ -451,14 +392,14 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
     private Optional<Paper> findExistingPaper(ExternalPaperMetadata metadata) {
         if (StringUtils.hasText(metadata.sourceIdentifier()) && StringUtils.hasText(metadata.sourceType())) {
-            Optional<Paper> bySource = paperRepository.findBySourceTypeAndSourceIdentifierIgnoreCase(
+            Optional<Paper> bySource = paperRepository.findBySourceTypeAndSourceIdentifier(
                     metadata.sourceType(), metadata.sourceIdentifier());
             if (bySource.isPresent()) {
                 return bySource;
             }
         }
         if (StringUtils.hasText(metadata.doi())) {
-            return paperRepository.findByDoiIgnoreCase(metadata.doi());
+            return paperRepository.findByDoi(metadata.doi());
         }
         return Optional.empty();
     }
@@ -477,13 +418,16 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         if (keywords == null) {
             return;
         }
+        Set<Long> existingIds = paperKeywordRepository.findByPaperId(paper.getId()).stream()
+                .map(pk -> pk.getKeyword().getKeywordId())
+                .collect(java.util.stream.Collectors.toSet());
         for (ExternalKeywordInfo info : keywords) {
             if (!StringUtils.hasText(info.term())) {
                 continue;
             }
             String term = info.term().trim();
             String domain = StringUtils.hasText(info.domain()) ? info.domain().trim() : "General";
-            Keyword keyword = keywordRepository.findByTermIgnoreCase(term).orElse(null);
+            Keyword keyword = keywordRepository.findByTerm(term).orElse(null);
             if (keyword == null) {
                 keyword = keywordRepository.save(Keyword.builder()
                         .term(term)
@@ -495,19 +439,21 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 keyword = keywordRepository.save(keyword);
             }
 
-            final Keyword finalKeyword = keyword;
-            boolean exists = paperKeywordRepository.findByPaperId(paper.getId()).stream()
-                    .anyMatch(pk -> pk.getKeyword().getKeywordId().equals(finalKeyword.getKeywordId()));
-            if (!exists) {
-                paperKeywordRepository.save(PaperKeyword.builder().paper(paper).keyword(finalKeyword).build());
+            if (!existingIds.contains(keyword.getKeywordId())) {
+                paperKeywordRepository.save(PaperKeyword.builder().paper(paper).keyword(keyword).build());
+                existingIds.add(keyword.getKeywordId());
             }
         }
     }
 
     private void linkAuthors(Paper paper, ExternalPaperMetadata metadata) {
+        Set<Long> existingIds = paperAuthorRepository.findByPaperId(paper.getId()).stream()
+                .map(pa -> pa.getAuthor().getId())
+                .collect(java.util.stream.Collectors.toSet());
+
         if (metadata.authorDetails() != null && !metadata.authorDetails().isEmpty()) {
             for (ExternalAuthorInfo info : metadata.authorDetails()) {
-                linkOneAuthor(paper, info);
+                linkOneAuthor(paper, info, existingIds);
             }
             return;
         }
@@ -518,11 +464,11 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             if (!StringUtils.hasText(name)) {
                 continue;
             }
-            linkOneAuthor(paper, new ExternalAuthorInfo(name.trim(), "LOCAL", null, ""));
+            linkOneAuthor(paper, new ExternalAuthorInfo(name.trim(), "LOCAL", null, ""), existingIds);
         }
     }
 
-    private void linkOneAuthor(Paper paper, ExternalAuthorInfo info) {
+    private void linkOneAuthor(Paper paper, ExternalAuthorInfo info, Set<Long> existingIds) {
         if (!StringUtils.hasText(info.name())) {
             return;
         }
@@ -531,11 +477,11 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
         Author author = null;
         if (StringUtils.hasText(info.sourceIdentifier()) && StringUtils.hasText(info.sourceType())) {
-            author = authorRepository.findBySourceTypeAndSourceIdentifierIgnoreCase(info.sourceType(), info.sourceIdentifier()).orElse(null);
+            author = authorRepository.findBySourceTypeAndSourceIdentifier(info.sourceType(), info.sourceIdentifier()).orElse(null);
         }
         if (author == null) {
             author = authorRepository
-                    .findFirstByNameIgnoreCaseAndAffiliationIgnoreCaseOrderByIdAsc(trimmed, affiliation)
+                    .findFirstByNameAndAffiliationOrderByIdAsc(trimmed, affiliation)
                     .orElse(null);
         }
         if (author == null) {
@@ -557,11 +503,9 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             author = authorRepository.save(author);
         }
 
-        final Author linkedAuthor = author;
-        boolean exists = paperAuthorRepository.findByPaperId(paper.getId()).stream()
-                .anyMatch(pa -> pa.getAuthor().getId().equals(linkedAuthor.getId()));
-        if (!exists) {
-            paperAuthorRepository.save(PaperAuthor.builder().paper(paper).author(linkedAuthor).build());
+        if (!existingIds.contains(author.getId())) {
+            paperAuthorRepository.save(PaperAuthor.builder().paper(paper).author(author).build());
+            existingIds.add(author.getId());
         }
     }
 }

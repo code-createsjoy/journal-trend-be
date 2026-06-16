@@ -45,6 +45,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
     @Override
     @Transactional
     public void recalculateAll() {
+        recalculateMonth(YearMonth.now().minusMonths(1));
         recalculateMonth(YearMonth.now());
     }
 
@@ -116,7 +117,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
             trend.setCreatedAt(LocalDateTime.now());
             trendsToSave.add(trend);
 
-            if (target.equals(YearMonth.now())) {
+            if (target.equals(YearMonth.now().minusMonths(1))) {
                 keyword.setTrendScore(score);
                 keyword.setPaperCount(totalPapers);
                 keywordsToSave.add(keyword);
@@ -137,7 +138,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         int consecutiveMonths = appProperties.getSync().getTrendingConsecutiveMonths();
         BigDecimal threshold = BigDecimal.valueOf(appProperties.getSync().getTrendingThresholdPercent());
 
-        YearMonth end = YearMonth.now();
+        YearMonth end = YearMonth.now().minusMonths(1);
         List<YearMonth> targetMonths = new ArrayList<>();
         YearMonth cursor = end.minusMonths(consecutiveMonths - 1L);
         for (int i = 0; i < consecutiveMonths; i++) {
@@ -182,7 +183,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
     public List<TrendingKeywordResponse> findTrendingKeywordResponses() {
         List<Keyword> keywords = findTrendingKeywords();
         List<TrendingKeywordResponse> responses = new ArrayList<>();
-        YearMonth current = YearMonth.now();
+        YearMonth current = YearMonth.now().minusMonths(1);
         int rank = 1;
         
         // Sort by trend score desc
@@ -201,7 +202,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
     @Transactional(readOnly = true)
     public List<TrendingKeywordResponse> findTopByTrendScore(int limit) {
         int size = Math.max(1, Math.min(limit, 50));
-        YearMonth current = YearMonth.now();
+        YearMonth current = YearMonth.now().minusMonths(1);
         List<PublicationTrend> trends = publicationTrendRepository.findTopByYearMonth(
                 current.getYear(), current.getMonthValue(), PageRequest.of(0, size));
 
@@ -232,7 +233,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
     public PublicationTrend getCurrentMonthTrend(Long keywordId) {
         Keyword keyword = keywordRepository.findById(keywordId)
                 .orElseThrow(() -> new ResourceNotFoundException("Keyword not found: " + keywordId));
-        YearMonth current = YearMonth.now();
+        YearMonth current = YearMonth.now().minusMonths(1);
         return publicationTrendRepository.findByKeywordIdAndYearAndMonth(
                 keywordId, current.getYear(), current.getMonthValue())
                 .orElse(PublicationTrend.builder()

@@ -43,11 +43,16 @@ public class OpenAlexClient {
                         appProperties.getOpenalex().getBaseUrl() + "/works")
                 .queryParam("search", search)
                 .queryParam("page", page)
-                .queryParam("per_page", appProperties.getOpenalex().getPerPage())
-                .queryParam("sort", "publication_date:desc");
+                .queryParam("per_page", appProperties.getOpenalex().getPerPage());
+                
+        // TODO: Bỏ comment dòng bên dưới sau khi đã lấy đủ dữ liệu các tháng cũ
+        // để hệ thống quay lại ưu tiên lấy các bài báo mới nhất (đề phòng OpenAlex bị quá tải).
+        // builder.queryParam("sort", "publication_date:desc");
+        String filterStr = "has_doi:true,has_abstract:true";
         if (StringUtils.hasText(fromPublicationDate)) {
-            builder.queryParam("filter", "from_publication_date:" + fromPublicationDate);
+            filterStr += ",from_publication_date:" + fromPublicationDate;
         }
+        builder.queryParam("filter", filterStr);
         appendMailto(builder);
         JsonNode root = getJson(builder.toUriString());
         List<ExternalPaperMetadata> results = new ArrayList<>();
@@ -134,7 +139,7 @@ public class OpenAlexClient {
             authors.add(info.name());
         }
         String pdfUrl = textOrNull(work.path("open_access").path("oa_url"));
-        String landingPageUrl = textOrNull(work.path("id"));
+        String landingPageUrl = textOrNull(work.path("primary_location").path("landing_page_url"));
         Boolean openAccess = work.path("open_access").path("is_oa").isBoolean()
                 ? work.path("open_access").path("is_oa").asBoolean()
                 : null;

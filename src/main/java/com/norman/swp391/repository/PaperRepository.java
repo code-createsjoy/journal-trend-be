@@ -29,12 +29,12 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
     /**
      * Tìm kiếm: findByDoiIgnoreCase.
      */
-    Optional<Paper> findByDoiIgnoreCase(String doi);
+    Optional<Paper> findByDoi(String doi);
 
     /**
      * Tìm bài báo theo Source Type và Identifier.
      */
-    Optional<Paper> findBySourceTypeAndSourceIdentifierIgnoreCase(String sourceType, String sourceIdentifier);
+    Optional<Paper> findBySourceTypeAndSourceIdentifier(String sourceType, String sourceIdentifier);
 
     /**
      * Lấy bài thiếu ngày xuất bản theo trạng thái.
