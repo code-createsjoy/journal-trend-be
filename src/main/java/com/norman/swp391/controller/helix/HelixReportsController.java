@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 /**
  * Xuất CSV cho Helix admin.
  */
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/reports")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
 public class HelixReportsController {
 
     private final ReportExportService reportExportService;

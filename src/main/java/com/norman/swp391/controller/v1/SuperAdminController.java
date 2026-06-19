@@ -39,7 +39,7 @@ public class SuperAdminController {
     }
 
     /**
-     * Cập nhật vai trò người dùng (USER, ADMIN, SUPER_ADMIN).
+     * Cập nhật vai trò người dùng (STUDENT, LECTURER, RESEARCHER, ADMIN, SUPER_ADMIN).
      */
     @PutMapping("/users/{id}/role")
     public ApiResponse<UserAdminResponse> updateRole(

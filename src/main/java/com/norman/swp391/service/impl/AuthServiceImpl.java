@@ -69,11 +69,17 @@ public class AuthServiceImpl implements AuthService {
         if (userRepository.existsByEmailIgnoreCase(request.getEmail())) {
             throw new BadRequestException("Email is already registered");
         }
+
+        UserRole assignedRole = request.getRole();
+        if (assignedRole == null || assignedRole == UserRole.ADMIN || assignedRole == UserRole.SUPER_ADMIN) {
+            throw new BadRequestException("Role must be STUDENT, LECTURER or RESEARCHER");
+        }
+
         User user = User.builder()
                 .email(request.getEmail().trim().toLowerCase())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .fullName(request.getFullName().trim())
-                .role(UserRole.USER)
+                .role(assignedRole)
                 .status(UserStatus.ACTIVE)
                 .enabled(false)
                 .verified(false)
