@@ -20,7 +20,7 @@ public final class HelixDtos {
     /**
      * Session Helix.
      */
-    public record HelixAuthSession(HelixUser user, String accessToken) {}
+    public record HelixAuthSession(HelixUser user, String accessToken, String refreshToken) {}
 
     /**
      * Login Helix.

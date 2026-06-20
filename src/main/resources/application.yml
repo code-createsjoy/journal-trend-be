@@ -69,7 +69,7 @@ app:
     trending-threshold-percent: ${TRENDING_THRESHOLD:15}
     trending-consecutive-months: ${TRENDING_CONSECUTIVE_MONTHS:3}
     max-pages: ${SYNC_MAX_PAGES:20}
-    max-papers-per-run: ${SYNC_MAX_PAPERS_PER_RUN:100}
+    max-papers-per-run: ${SYNC_MAX_PAPERS_PER_RUN:1000}
     from-publication-date: ${SYNC_FROM_PUBLICATION_DATE:2026-01-01}
     ingest-batch-size: ${SYNC_INGEST_BATCH_SIZE:25}
     enrich-on-sync: ${SYNC_ENRICH_ON_SYNC:false}
