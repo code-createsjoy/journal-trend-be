@@ -76,7 +76,7 @@ public class HelixApiService {
                 .email(request.email())
                 .password(request.password())
                 .build());
-        return new HelixAuthSession(toHelixUser(user), null);
+        return new HelixAuthSession(toHelixUser(user), null, null);
     }
 
     public HelixUser currentUser() {
@@ -488,7 +488,7 @@ public class HelixApiService {
     }
 
     private HelixAuthSession toHelixSession(AuthResponse auth) {
-        return new HelixAuthSession(toHelixUser(auth.getUser()), auth.getAccessToken());
+        return new HelixAuthSession(toHelixUser(auth.getUser()), auth.getAccessToken(), auth.getRefreshToken());
     }
 
     private HelixUser toHelixUser(UserResponse user) {

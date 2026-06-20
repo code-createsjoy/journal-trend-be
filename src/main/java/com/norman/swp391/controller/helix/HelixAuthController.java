@@ -60,7 +60,7 @@ public class HelixAuthController {
     public HelixAuthSession me(HttpServletRequest request) {
         String bearer = request.getHeader(HttpHeaders.AUTHORIZATION);
         String token = bearer != null && bearer.startsWith("Bearer ") ? bearer.substring(7) : "";
-        return new HelixAuthSession(helixApiService.currentUser(), token);
+        return new HelixAuthSession(helixApiService.currentUser(), token, null);
     }
 
     @PutMapping("/profile")
@@ -69,6 +69,6 @@ public class HelixAuthController {
         authService.updateProfile(UpdateProfileRequest.builder().fullName(request.name()).build());
         String bearer = httpRequest.getHeader(HttpHeaders.AUTHORIZATION);
         String token = bearer != null && bearer.startsWith("Bearer ") ? bearer.substring(7) : "";
-        return new HelixAuthSession(helixApiService.currentUser(), token);
+        return new HelixAuthSession(helixApiService.currentUser(), token, null);
     }
 }
