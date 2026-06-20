@@ -32,8 +32,6 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -55,7 +53,6 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthenticationManager authenticationManager;
-    private final JavaMailSender mailSender;
     private final AppProperties appProperties;
     private final EmailService emailService;
     private final EmailVerificationService emailVerificationService;
@@ -176,7 +173,7 @@ public class AuthServiceImpl implements AuthService {
                     .used(false)
                     .build();
             passwordResetTokenRepository.save(resetToken);
-            sendPasswordResetEmail(user.getEmail(), token);
+            emailService.sendPasswordResetEmail(user.getEmail(), token);
         });
     }
 
@@ -267,20 +264,4 @@ public class AuthServiceImpl implements AuthService {
         return UserMapper.toAuthResponse(accessToken, refreshTokenValue, user);
     }
 
-/**
- * Xử lý nghiệp vụ: sendPasswordResetEmail.
- */
-    private void sendPasswordResetEmail(String email, String token) {
-        String resetUrl = appProperties.getFrontendBaseUrl() + "/reset-password?token=" + token;
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(email);
-        message.setSubject("Password reset - Research Trend");
-        message.setText("Click the link below to reset your password (expires in "
-                + appProperties.getPasswordResetExpirationMinutes() + " minutes):\n\n" + resetUrl);
-        try {
-            mailSender.send(message);
-        } catch (Exception ex) {
-            log.warn("Failed to send password reset email to {}", email, ex);
-        }
-    }
 }

@@ -10,5 +10,13 @@ public interface EmailService {
      * @param token     Mã xác nhận
      */
     void sendVerificationEmail(String toEmail, String fullName, String token);
+
+    /**
+     * Gửi email khôi phục mật khẩu.
+     *
+     * @param toEmail   Email người nhận
+     * @param token     Mã token đặt lại mật khẩu
+     */
+    void sendPasswordResetEmail(String toEmail, String token);
 }
 
