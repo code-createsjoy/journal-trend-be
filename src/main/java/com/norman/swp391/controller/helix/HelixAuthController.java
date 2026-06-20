@@ -4,6 +4,8 @@ import com.norman.swp391.dto.helix.HelixDtos.HelixAuthSession;
 import com.norman.swp391.dto.helix.HelixDtos.HelixLoginRequest;
 import com.norman.swp391.dto.helix.HelixDtos.HelixRegisterRequest;
 import com.norman.swp391.dto.helix.HelixDtos.HelixUpdateProfileRequest;
+import com.norman.swp391.dto.request.auth.ForgotPasswordRequest;
+import com.norman.swp391.dto.request.auth.ResetPasswordRequest;
 import com.norman.swp391.dto.request.auth.RefreshTokenRequest;
 import com.norman.swp391.dto.request.auth.UpdateProfileRequest;
 import com.norman.swp391.service.AuthService;
@@ -51,6 +53,18 @@ public class HelixAuthController {
             authService.logout(request);
         }
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.forgotPassword(request);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/me")
