@@ -19,7 +19,7 @@ spring:
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: create 
     show-sql: ${JPA_SHOW_SQL:false}
     open-in-view: false
     properties:

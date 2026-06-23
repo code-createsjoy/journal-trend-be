@@ -26,10 +26,15 @@ import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.NotificationService;
+import com.norman.swp391.service.EmailService;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -50,6 +55,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final PaperRepository paperRepository;
     private final PaperKeywordRepository paperKeywordRepository;
     private final PaperAuthorRepository paperAuthorRepository;
+    private final EmailService emailService;
 
     @Override
     @Transactional(readOnly = true)
@@ -121,19 +127,32 @@ public class NotificationServiceImpl implements NotificationService {
             return;
         }
 
-        Set<Long> notifiedUsers = new HashSet<>();
+        Map<User, Set<Paper>> userNewPapersMap = new HashMap<>();
+
         for (Long paperId : newPaperIds) {
             Paper paper = paperRepository.findById(paperId).orElse(null);
             if (paper == null) {
                 continue;
             }
-            notifyJournalFollowers(paper, notifiedUsers);
-            notifyKeywordFollowers(paper, notifiedUsers);
-            notifyAuthorFollowers(paper, notifiedUsers);
+            Set<Long> notifiedUsers = new HashSet<>();
+            notifyJournalFollowers(paper, notifiedUsers, userNewPapersMap);
+            notifyKeywordFollowers(paper, notifiedUsers, userNewPapersMap);
+            notifyAuthorFollowers(paper, notifiedUsers, userNewPapersMap);
         }
+
+        // Send email notifications
+        userNewPapersMap.forEach((user, papers) -> {
+            if (user.getEmail() != null) {
+                emailService.sendNewPaperNotificationsEmail(
+                        user.getEmail(),
+                        user.getFullName(),
+                        new ArrayList<>(papers)
+                );
+            }
+        });
     }
 
-    private void notifyJournalFollowers(Paper paper, Set<Long> notifiedUsers) {
+    private void notifyJournalFollowers(Paper paper, Set<Long> notifiedUsers, Map<User, Set<Paper>> userNewPapersMap) {
         if (paper.getJournalRef() == null) {
             return;
         }
@@ -155,10 +174,11 @@ public class NotificationServiceImpl implements NotificationService {
                     .readStatus(NotificationReadStatus.UNREAD)
                     .createdAt(LocalDateTime.now())
                     .build());
+            userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
         }
     }
 
-    private void notifyKeywordFollowers(Paper paper, Set<Long> notifiedUsers) {
+    private void notifyKeywordFollowers(Paper paper, Set<Long> notifiedUsers, Map<User, Set<Paper>> userNewPapersMap) {
         for (PaperKeyword pk : paperKeywordRepository.findByPaperId(paper.getId())) {
             Keyword keyword = pk.getKeyword();
             for (FollowKeyword follow : followKeywordRepository.findByKeywordId(keyword.getKeywordId())) {
@@ -178,11 +198,12 @@ public class NotificationServiceImpl implements NotificationService {
                         .readStatus(NotificationReadStatus.UNREAD)
                         .createdAt(LocalDateTime.now())
                         .build());
+                userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
             }
         }
     }
 
-    private void notifyAuthorFollowers(Paper paper, Set<Long> notifiedUsers) {
+    private void notifyAuthorFollowers(Paper paper, Set<Long> notifiedUsers, Map<User, Set<Paper>> userNewPapersMap) {
         for (PaperAuthor pa : paperAuthorRepository.findByPaperId(paper.getId())) {
             Author author = pa.getAuthor();
             for (FollowAuthor follow : followAuthorRepository.findByAuthorId(author.getId())) {
@@ -202,6 +223,7 @@ public class NotificationServiceImpl implements NotificationService {
                         .readStatus(NotificationReadStatus.UNREAD)
                         .createdAt(LocalDateTime.now())
                         .build());
+                userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
             }
         }
     }
