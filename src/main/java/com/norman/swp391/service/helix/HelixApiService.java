@@ -16,6 +16,7 @@ import com.norman.swp391.dto.response.paper.PaperResponse;
 import com.norman.swp391.dto.response.keyword.KeywordResponse;
 import com.norman.swp391.dto.response.keyword.TrendingKeywordResponse;
 import com.norman.swp391.dto.response.keyword.TrendingTopicResponse;
+import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.entity.*;
 import com.norman.swp391.entity.enums.*;
 import com.norman.swp391.mapper.PaperMapper;
@@ -57,6 +58,7 @@ public class HelixApiService {
     private final AuthorService authorService;
     private final AdminService adminService;
     private final PaperSyncService paperSyncService;
+    private final AuthorRepository authorRepository;
     private final PaperRepository paperRepository;
     private final PaperAuthorRepository paperAuthorRepository;
     private final PaperKeywordRepository paperKeywordRepository;
@@ -75,6 +77,7 @@ public class HelixApiService {
                 .fullName(request.name())
                 .email(request.email())
                 .password(request.password())
+                .role(UserRole.RESEARCHER)
                 .build());
         return new HelixAuthSession(toHelixUser(user), null, null);
     }
@@ -163,6 +166,52 @@ public class HelixApiService {
                         round(Math.min(99, Math.log10(a.getCitationCount() + 1) * 22))))
                 .toList();
     }
+
+    @Transactional(readOnly = true)
+    public PageResponse<HelixAuthor> listAuthors(int page, int size, String q, String topicId) {
+        int pageSize = Math.max(1, Math.min(size, 100));
+        Pageable pageable = PageRequest.of(page, pageSize);
+        Page<Author> authorPage;
+
+        if (topicId != null && !topicId.isBlank()) {
+            long hash;
+            try {
+                hash = Long.parseLong(topicId);
+            } catch (NumberFormatException e) {
+                hash = 0;
+            }
+            final long targetHash = hash;
+            String domain = keywordTrendService.findTrendingTopics().stream()
+                    .filter(t -> t.getTopicId() == targetHash)
+                    .map(TrendingTopicResponse::getTopicName)
+                    .findFirst()
+                    .orElse(null);
+
+            if (domain != null) {
+                LocalDate now = LocalDate.now();
+                authorPage = authorRepository.findTrendingAuthorsByDomain(domain, q, now.getYear(), now.getMonthValue(), pageable);
+            } else {
+                authorPage = authorRepository.findAllAuthors(q, pageable);
+            }
+        } else {
+            pageable = PageRequest.of(page, pageSize, Sort.by("citationCount").descending());
+            authorPage = authorRepository.findAllAuthors(q, pageable);
+        }
+
+        List<HelixAuthor> helixAuthors = authorPage.getContent().stream()
+                .map(a -> new HelixAuthor(
+                        String.valueOf(a.getId()),
+                        a.getName(),
+                        a.getAffiliation() != null ? a.getAffiliation() : "",
+                        (int) paperAuthorRepository.countByAuthorId(a.getId()),
+                        a.getCitationCount(),
+                        estimateHIndex(a.getCitationCount()),
+                        round(Math.min(99, Math.log10(a.getCitationCount() + 1) * 22))))
+                .toList();
+
+        return PageResponse.from(authorPage, helixAuthors);
+    }
+
 
     public List<HelixPaper> listAuthorPapers(String authorId, Integer limit) {
         int size = limit != null && limit > 0 ? Math.min(limit, 100) : 50;

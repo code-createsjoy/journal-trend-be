@@ -92,4 +92,14 @@ public interface PaperKeywordRepository extends JpaRepository<PaperKeyword, Long
 
     @Query("SELECT COUNT(DISTINCT pk.keyword.keywordId) FROM PaperKeyword pk")
     long countDistinctKeywords();
+
+    @Query("""
+        SELECT pk.keyword.term, COUNT(pk.id) 
+        FROM PaperAuthor pa
+        JOIN PaperKeyword pk ON pa.paper.id = pk.paper.id
+        WHERE pa.author.id = :authorId
+        GROUP BY pk.keyword.term
+        ORDER BY COUNT(pk.id) DESC
+        """)
+    List<Object[]> findTopKeywordsByAuthor(@Param("authorId") Long authorId, Pageable pageable);
 }

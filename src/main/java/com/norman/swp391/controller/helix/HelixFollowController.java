@@ -1,7 +1,9 @@
 package com.norman.swp391.controller.helix;
 
+import com.norman.swp391.dto.response.author.AuthorResponse;
 import com.norman.swp391.dto.response.journal.JournalResponse;
 import com.norman.swp391.dto.response.keyword.KeywordResponse;
+import com.norman.swp391.service.FollowAuthorService;
 import com.norman.swp391.service.FollowJournalService;
 import com.norman.swp391.service.FollowKeywordService;
 import io.swagger.v3.oas.annotations.Hidden;
@@ -21,6 +23,7 @@ public class HelixFollowController {
 
     private final FollowKeywordService followKeywordService;
     private final FollowJournalService followJournalService;
+    private final FollowAuthorService followAuthorService;
 
     /**
      * Xử lý API listFollowedTopics.
@@ -68,6 +71,30 @@ public class HelixFollowController {
     @DeleteMapping("/journals/{journalId}")
     public void unfollowJournal(@PathVariable Long journalId) {
         followJournalService.unfollow(journalId);
+    }
+
+    /**
+     * Xử lý API listFollowedAuthors.
+     */
+    @GetMapping("/authors")
+    public List<AuthorResponse> listFollowedAuthors() {
+        return followAuthorService.listFollowed();
+    }
+
+    /**
+     * Xử lý API followAuthor.
+     */
+    @PostMapping("/authors/{authorId}")
+    public void followAuthor(@PathVariable Long authorId) {
+        followAuthorService.follow(authorId);
+    }
+
+    /**
+     * Xử lý API unfollowAuthor.
+     */
+    @DeleteMapping("/authors/{authorId}")
+    public void unfollowAuthor(@PathVariable Long authorId) {
+        followAuthorService.unfollow(authorId);
     }
 }
 

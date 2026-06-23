@@ -120,6 +120,8 @@ public class AppProperties {
         private int maxFollowKeywordsPerUser = 20;
         /** BR-56: tối đa journal follow / user. */
         private int maxFollowJournalsPerUser = 10;
+        /** Tối đa author follow / user. */
+        private int maxFollowAuthorsPerUser = 20;
         /** BR-57: tối đa bài lưu (bookmark) / user (tất cả collections). */
         private int maxBookmarkPapersPerUser = 200;
         /** BR-50: ngưỡng % tăng trưởng một tháng để gắn nhãn Anomaly. */
