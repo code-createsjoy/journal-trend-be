@@ -93,13 +93,13 @@ public class HelixApiService {
         Page<Paper> page;
         if (keywordId != null) {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, keywordId, null, null, null, null, null, pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, keywordId, null, null, null, null, null, null, pageable);
         } else if (query == null) {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, null, null, null, null, null, null, null, pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, null, null, null, null, null, null, null, null, pageable);
         } else {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, null, null, null, null, null, pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, null, null, null, null, null, null, pageable);
         }
         List<Paper> paperEntities = page.getContent();
         List<Long> paperIds = paperEntities.stream().map(Paper::getId).toList();

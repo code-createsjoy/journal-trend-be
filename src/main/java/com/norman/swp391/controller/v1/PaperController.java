@@ -32,8 +32,9 @@ public class PaperController {
             @RequestParam(required = false) Integer toYear,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) Integer minCitations,
+            @RequestParam(required = false) Long journalId,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ApiResponse.ok(paperService.search(q, topicId, authorId, fromYear, toYear, category, minCitations, pageable));
+        return ApiResponse.ok(paperService.search(q, topicId, authorId, fromYear, toYear, category, minCitations, journalId, pageable));
     }
 
     /**

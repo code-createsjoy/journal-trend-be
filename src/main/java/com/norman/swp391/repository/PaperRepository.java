@@ -90,6 +90,7 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
               WHERE LOWER(pk3.keyword.domain) = LOWER(:category)
           ))
           AND (:minCitations IS NULL OR p.citationCount >= :minCitations)
+          AND (:journalId IS NULL OR p.journalRef.id = :journalId)
         """)
     Page<Paper> search(
             @Param("status") PaperStatus status,
@@ -101,6 +102,7 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
             @Param("toYear") Integer toYear,
             @Param("category") String category,
             @Param("minCitations") Integer minCitations,
+            @Param("journalId") Long journalId,
             Pageable pageable);
 
     /**
