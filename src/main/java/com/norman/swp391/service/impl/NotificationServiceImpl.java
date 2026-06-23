@@ -2,11 +2,14 @@ package com.norman.swp391.service.impl;
 
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.notification.NotificationResponse;
+import com.norman.swp391.entity.FollowAuthor;
 import com.norman.swp391.entity.FollowJournal;
 import com.norman.swp391.entity.FollowKeyword;
 import com.norman.swp391.entity.Notification;
 import com.norman.swp391.entity.Paper;
+import com.norman.swp391.entity.PaperAuthor;
 import com.norman.swp391.entity.PaperKeyword;
+import com.norman.swp391.entity.Author;
 import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.User;
 import com.norman.swp391.entity.enums.NotificationReadStatus;
@@ -14,9 +17,11 @@ import com.norman.swp391.entity.enums.NotificationTriggerType;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.mapper.NotificationMapper;
+import com.norman.swp391.repository.FollowAuthorRepository;
 import com.norman.swp391.repository.FollowJournalRepository;
 import com.norman.swp391.repository.FollowKeywordRepository;
 import com.norman.swp391.repository.NotificationRepository;
+import com.norman.swp391.repository.PaperAuthorRepository;
 import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.security.SecurityUtils;
@@ -41,8 +46,10 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationRepository notificationRepository;
     private final FollowKeywordRepository followKeywordRepository;
     private final FollowJournalRepository followJournalRepository;
+    private final FollowAuthorRepository followAuthorRepository;
     private final PaperRepository paperRepository;
     private final PaperKeywordRepository paperKeywordRepository;
+    private final PaperAuthorRepository paperAuthorRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -108,7 +115,9 @@ public class NotificationServiceImpl implements NotificationService {
         }
         
         // Fast path: if there are no followers at all, skip the 100,000+ queries.
-        if (followKeywordRepository.count() == 0 && followJournalRepository.count() == 0) {
+        if (followKeywordRepository.count() == 0 
+                && followJournalRepository.count() == 0 
+                && followAuthorRepository.count() == 0) {
             return;
         }
 
@@ -120,6 +129,7 @@ public class NotificationServiceImpl implements NotificationService {
             }
             notifyJournalFollowers(paper, notifiedUsers);
             notifyKeywordFollowers(paper, notifiedUsers);
+            notifyAuthorFollowers(paper, notifiedUsers);
         }
     }
 
@@ -164,6 +174,30 @@ public class NotificationServiceImpl implements NotificationService {
                         .paper(paper)
                         .keyword(keyword)
                         .message("New paper with keyword \"" + keyword.getTerm() + "\": " + truncate(paper.getTitle(), 80))
+                        .triggerType(NotificationTriggerType.NEW_PAPER)
+                        .readStatus(NotificationReadStatus.UNREAD)
+                        .createdAt(LocalDateTime.now())
+                        .build());
+            }
+        }
+    }
+
+    private void notifyAuthorFollowers(Paper paper, Set<Long> notifiedUsers) {
+        for (PaperAuthor pa : paperAuthorRepository.findByPaperId(paper.getId())) {
+            Author author = pa.getAuthor();
+            for (FollowAuthor follow : followAuthorRepository.findByAuthorId(author.getId())) {
+                User user = follow.getUser();
+                if (!notifiedUsers.add(user.getId())) {
+                    continue;
+                }
+                if (notificationRepository.existsByUserIdAndPaperId(user.getId(), paper.getId())) {
+                    continue;
+                }
+                notificationRepository.save(Notification.builder()
+                        .user(user)
+                        .paper(paper)
+                        .author(author)
+                        .message("New paper from author you follow: " + author.getName() + " - " + truncate(paper.getTitle(), 80))
                         .triggerType(NotificationTriggerType.NEW_PAPER)
                         .readStatus(NotificationReadStatus.UNREAD)
                         .createdAt(LocalDateTime.now())

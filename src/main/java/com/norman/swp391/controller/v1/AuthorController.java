@@ -1,6 +1,7 @@
 package com.norman.swp391.controller.v1;
 
 import com.norman.swp391.dto.common.ApiResponse;
+import com.norman.swp391.dto.response.author.AuthorDetailResponse;
 import com.norman.swp391.dto.response.author.AuthorResponse;
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.paper.PaperResponse;
@@ -37,6 +38,11 @@ public class AuthorController {
     @GetMapping("/{id}")
     public ApiResponse<AuthorResponse> getById(@PathVariable Long id) {
         return ApiResponse.ok(authorService.getById(id));
+    }
+
+    @GetMapping("/{id}/detail")
+    public ApiResponse<AuthorDetailResponse> getAuthorDetail(@PathVariable Long id) {
+        return ApiResponse.ok(authorService.getAuthorDetail(id));
     }
 
     /**

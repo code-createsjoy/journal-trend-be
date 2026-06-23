@@ -59,6 +59,10 @@ public class Notification {
     @JoinColumn(name = "journal_id")
     private Journal journal;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_id")
+    private Author author;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "read_status", nullable = false, length = 20)
     private NotificationReadStatus readStatus;

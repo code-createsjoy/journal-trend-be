@@ -83,6 +83,7 @@ app:
     open-alex-retry-attempts: ${SYNC_OPENALEX_RETRIES:3}
     max-follow-keywords-per-user: ${MAX_FOLLOW_KEYWORDS:20}
     max-follow-journals-per-user: ${MAX_FOLLOW_JOURNALS:10}
+    max-follow-authors-per-user: ${MAX_FOLLOW_AUTHORS:20}
     max-bookmark-papers-per-user: ${MAX_BOOKMARK_PAPERS:200}
     anomaly-threshold-percent: ${ANOMALY_THRESHOLD_PERCENT:300}
     pending-review-expiry-days: ${PENDING_REVIEW_EXPIRY_DAYS:30}

@@ -205,4 +205,15 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
                  p.id DESC
         """)
     java.util.List<Paper> findNeedingMetadataRepair(org.springframework.data.domain.Pageable pageable);
+
+    @Query("""
+        SELECT p, COUNT(cp.id) as bookmarkCount 
+        FROM PaperAuthor pa
+        JOIN pa.paper p
+        LEFT JOIN CollectionPaper cp ON p.id = cp.paper.id
+        WHERE pa.author.id = :authorId AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        GROUP BY p.id, p.title, p.abstractText, p.doi, p.publicationDate, p.citationCount, p.pdfUrl, p.sourceUrl, p.openAccess, p.sourceType, p.sourceIdentifier, p.primarySource, p.status, p.reviewStatus, p.createdAt, p.journal, p.journalRef
+        ORDER BY COUNT(cp.id) DESC, p.citationCount DESC
+        """)
+    List<Object[]> findPopularPapersByAuthor(@Param("authorId") Long authorId);
 }
