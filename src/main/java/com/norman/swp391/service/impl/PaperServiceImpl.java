@@ -46,7 +46,7 @@ public class PaperServiceImpl implements PaperService {
 /**
  * Tìm kiếm/lọc: search.
  */
-    public PageResponse<PaperDetailResponse> search(String q, Long topicId, Long authorId, Integer fromYear, Integer toYear, String category, Integer minCitations, Pageable pageable) {
+    public PageResponse<PaperDetailResponse> search(String q, Long topicId, Long authorId, Integer fromYear, Integer toYear, String category, Integer minCitations, Long journalId, Pageable pageable) {
         String query = (q != null && q.isBlank()) ? null : q;
         String cat = (category != null && category.trim().equalsIgnoreCase("all")) ? null : category;
         
@@ -70,6 +70,7 @@ public class PaperServiceImpl implements PaperService {
                 toYear,
                 cat,
                 minCitations,
+                journalId,
                 safePageable);
         
         List<Paper> papers = page.getContent();

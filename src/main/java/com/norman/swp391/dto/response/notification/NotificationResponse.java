@@ -20,6 +20,11 @@ public class NotificationResponse {
     private String message;
     private NotificationReadStatus readStatus;
     private LocalDateTime createdAt;
+    private String triggerType;
+    private Long keywordId;
+    private Long journalId;
+    private Long authorId;
+    private Long paperId;
 }
 
 
