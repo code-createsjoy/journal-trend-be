@@ -19,14 +19,14 @@ spring:
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
   jpa:
     hibernate:
-      ddl-auto: create 
+      ddl-auto: update 
     show-sql: ${JPA_SHOW_SQL:false}
     open-in-view: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.SQLServerDialect
         format_sql: true
-        jdbc:
+        jdbc: 
           batch_size: 50
         order_inserts: true
         order_updates: true
