@@ -57,7 +57,7 @@ app:
   rate-limit-per-minute: 60
   openalex:
     base-url: https://api.openalex.org
-    mailto: ${OPENALEX_MAILTO:research@example.com}
+    mailto: ${OPENALEX_MAILTO:quocthaiarct2005@gmail.com}
     per-page: ${OPENALEX_PER_PAGE:200}
   semantic-scholar:
     base-url: https://api.semanticscholar.org/graph/v1
