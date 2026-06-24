@@ -36,4 +36,14 @@ public interface NotificationService {
  * Xử lý nghiệp vụ: notifyNewPapersForSubscriptions.
  */
     void notifyNewPapersForSubscriptions(Set<Long> newPaperIds);
+
+    void delete(Long notificationId);
+
+    void deleteMultiple(List<Long> notificationIds);
+
+    void deleteAll();
+
+    void deleteAllRead();
+
+    void markMultipleAsRead(List<Long> notificationIds);
 }

@@ -1,5 +1,6 @@
 package com.norman.swp391.controller.v1;
 
+import java.util.List;
 import com.norman.swp391.dto.common.ApiResponse;
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.notification.NotificationResponse;
@@ -44,6 +45,51 @@ public class NotificationController {
     public ApiResponse<Void> markAllAsRead() {
         notificationService.markAllAsRead();
         return ApiResponse.okMessage("All notifications marked as read");
+    }
+
+    /**
+     * Xử lý API delete.
+     */
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        notificationService.delete(id);
+        return ApiResponse.okMessage("Notification deleted");
+    }
+
+    /**
+     * Xử lý API deleteMultiple.
+     */
+    @DeleteMapping("/bulk")
+    public ApiResponse<Void> deleteMultiple(@RequestParam("ids") List<Long> ids) {
+        notificationService.deleteMultiple(ids);
+        return ApiResponse.okMessage("Selected notifications deleted");
+    }
+
+    /**
+     * Xử lý API deleteAll.
+     */
+    @DeleteMapping("/all")
+    public ApiResponse<Void> deleteAll() {
+        notificationService.deleteAll();
+        return ApiResponse.okMessage("All notifications deleted");
+    }
+
+    /**
+     * Xử lý API deleteAllRead.
+     */
+    @DeleteMapping("/all-read")
+    public ApiResponse<Void> deleteAllRead() {
+        notificationService.deleteAllRead();
+        return ApiResponse.okMessage("All read notifications deleted");
+    }
+
+    /**
+     * Xử lý API bulk-read.
+     */
+    @PatchMapping("/bulk-read")
+    public ApiResponse<Void> markMultipleAsRead(@RequestParam("ids") List<Long> ids) {
+        notificationService.markMultipleAsRead(ids);
+        return ApiResponse.okMessage("Selected notifications marked as read");
     }
 }
 
