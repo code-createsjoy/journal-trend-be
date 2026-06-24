@@ -228,6 +228,56 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
+    @Override
+    @Transactional
+    public void delete(Long notificationId) {
+        Long userId = requireUserId();
+        Notification notification = notificationRepository
+                .findById(notificationId)
+                .filter(n -> n.getUser().getId().equals(userId))
+                .orElseThrow(() -> new ResourceNotFoundException("Notification", notificationId));
+        notificationRepository.delete(notification);
+    }
+
+    @Override
+    @Transactional
+    public void deleteMultiple(List<Long> notificationIds) {
+        if (notificationIds == null || notificationIds.isEmpty()) {
+            return;
+        }
+        Long userId = requireUserId();
+        notificationRepository.deleteByUserIdAndIds(userId, notificationIds);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAll() {
+        Long userId = requireUserId();
+        notificationRepository.deleteByUserId(userId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAllRead() {
+        Long userId = requireUserId();
+        notificationRepository.deleteByUserIdAndReadStatus(userId, NotificationReadStatus.READ);
+    }
+
+    @Override
+    @Transactional
+    public void markMultipleAsRead(List<Long> notificationIds) {
+        if (notificationIds == null || notificationIds.isEmpty()) {
+            return;
+        }
+        Long userId = requireUserId();
+        List<Notification> notifications = notificationRepository.findAllById(notificationIds);
+        List<Notification> toSave = notifications.stream()
+                .filter(n -> n.getUser().getId().equals(userId))
+                .peek(n -> n.setReadStatus(NotificationReadStatus.READ))
+                .toList();
+        notificationRepository.saveAll(toSave);
+    }
+
     private static String truncate(String text, int max) {
         if (text == null) {
             return "";
