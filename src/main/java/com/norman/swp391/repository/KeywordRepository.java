@@ -6,4 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface KeywordRepository extends JpaRepository<Keyword, Long> {
     Optional<Keyword> findByTerm(String term);
+
+    @org.springframework.data.jpa.repository.Query("SELECT k FROM Keyword k WHERE LOWER(k.term) IN :terms")
+    java.util.List<Keyword> findByTermInIgnoreCase(@org.springframework.data.repository.query.Param("terms") java.util.Collection<String> terms);
 }

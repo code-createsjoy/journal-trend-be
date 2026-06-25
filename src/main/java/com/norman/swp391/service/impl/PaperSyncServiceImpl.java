@@ -3,12 +3,15 @@ package com.norman.swp391.service.impl;
 import com.norman.swp391.config.AppProperties;
 import com.norman.swp391.dto.response.admin.SyncLogResponse;
 import com.norman.swp391.entity.Author;
+import com.norman.swp391.entity.KeywordSyncState;
 import com.norman.swp391.entity.Paper;
 import com.norman.swp391.entity.PaperAuthor;
 import com.norman.swp391.entity.PaperKeyword;
 import com.norman.swp391.entity.SyncLog;
 import com.norman.swp391.entity.Keyword;
+import com.norman.swp391.entity.Journal;
 import com.norman.swp391.entity.User;
+import com.norman.swp391.entity.enums.KeywordSyncStatus;
 import com.norman.swp391.entity.enums.PaperReviewStatus;
 import com.norman.swp391.entity.enums.PaperStatus;
 import com.norman.swp391.entity.enums.SyncStatus;
@@ -20,6 +23,7 @@ import com.norman.swp391.integration.semanticscholar.SemanticScholarClient;
 import com.norman.swp391.mapper.SyncLogMapper;
 import com.norman.swp391.repository.AuthorRepository;
 import com.norman.swp391.repository.JournalRepository;
+import com.norman.swp391.repository.KeywordSyncStateRepository;
 import com.norman.swp391.repository.PaperAuthorRepository;
 import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.PaperKeywordRepository;
@@ -32,13 +36,15 @@ import com.norman.swp391.service.NotificationService;
 import com.norman.swp391.service.PaperReviewService;
 import com.norman.swp391.service.PaperSyncService;
 import com.norman.swp391.service.KeywordTrendService;
+import jakarta.annotation.PreDestroy;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,6 +71,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
     private final AuthorRepository authorRepository;
     private final PaperAuthorRepository paperAuthorRepository;
     private final SyncLogRepository syncLogRepository;
+    private final KeywordSyncStateRepository keywordSyncStateRepository;
     private final UserRepository userRepository;
     private final ApiSourceService apiSourceService;
     private final JournalService journalService;
@@ -74,18 +81,34 @@ public class PaperSyncServiceImpl implements PaperSyncService {
     private final PaperReviewService paperReviewService;
     private final TransactionTemplate transactionTemplate;
 
+    // [Fix #2] Graceful shutdown support
+    private volatile boolean shutdownRequested = false;
+    private volatile Thread syncThread = null;
+
+    @PreDestroy
+    public void onShutdown() {
+        shutdownRequested = true;
+        Thread currentSyncThread = syncThread;
+        if (currentSyncThread != null) {
+            currentSyncThread.interrupt();
+            log.info("[SYNC] Shutdown requested, interrupting sync thread");
+        }
+    }
+
+    // [Fix #1] Pessimistic lock — ngăn 2 request đồng thời tạo 2 sync RUNNING
     @Override
+    @Transactional
     public SyncLogResponse startSync(Long adminId) {
         expireStaleRunningSyncs();
-        SyncLog running = findRunningWithAdmin();
-        if (running != null) {
-            return SyncLogMapper.toResponse(running);
+
+        // Pessimistic lock — block concurrent startSync() calls
+        List<SyncLog> running = syncLogRepository.findByStatusForUpdate(
+                SyncStatus.RUNNING, PageRequest.of(0, 1));
+        if (!running.isEmpty()) {
+            return SyncLogMapper.toResponse(running.get(0));
         }
 
-        User admin = null;
-        if (adminId != null) {
-            admin = userRepository.findById(adminId).orElse(null);
-        }
+        User admin = adminId != null ? userRepository.findById(adminId).orElse(null) : null;
 
         SyncLog sync = syncLogRepository.save(SyncLog.builder()
                 .startedAt(LocalDateTime.now())
@@ -96,7 +119,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
         SyncLogResponse response = SyncLogMapper.toResponse(sync);
         Long syncId = sync.getId();
-        Thread.startVirtualThread(() -> executeSync(syncId));
+        Thread vt = Thread.startVirtualThread(() -> executeSync(syncId));
+        syncThread = vt; // [Fix #2] Track virtual thread for graceful shutdown
         return response;
     }
 
@@ -136,21 +160,24 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         }
     }
 
-    private SyncLog findRunningWithAdmin() {
-        var running = syncLogRepository.findByStatusWithAdmin(SyncStatus.RUNNING, PageRequest.of(0, 1));
-        return running.isEmpty() ? null : running.get(0);
-    }
-
     private void executeSync(Long syncLogId) {
         SyncLog sync = syncLogRepository.findById(syncLogId).orElse(null);
         if (sync == null) {
             return;
         }
 
-        int totalFetched = 0;
+        // [Fix #6] Gộp biến — chỉ dùng totalPapersInserted cho cả limit check
         Set<Long> newPaperIds = new HashSet<>();
         boolean openAlexEnabled = false;
         boolean semanticScholarEnabled = false;
+
+        // Metrics Tracking
+        int totalApiCalls = 0;
+        int totalPagesFetched = 0;
+        int totalPapersFetched = 0;
+        int totalPapersInserted = 0;
+        // [Fix #4] Early stop tracking — giờ được sử dụng thực sự
+        boolean globalEarlyStopTriggered = false;
 
         try {
             openAlexEnabled = apiSourceService.isEnabled("OpenAlex");
@@ -165,7 +192,11 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             }
             int maxPages = Math.max(1, appProperties.getSync().getMaxPages());
             int maxPapers = Math.max(1, appProperties.getSync().getMaxPapersPerRun());
+
+            // Historical collection: always use the fixed from-publication-date from config
             String fromDate = appProperties.getSync().getFromPublicationDate();
+            log.info("[SYNC] Historical collection mode. Fixed from_publication_date={}", fromDate);
+
             int ingestBatchSize = Math.max(1, appProperties.getSync().getIngestBatchSize());
             List<ExternalPaperMetadata> ingestBuffer = new ArrayList<>(ingestBatchSize);
 
@@ -177,41 +208,129 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 enabledSources.add("SemanticScholar");
             }
 
+            // [Fix #8] DOI Pre-Filter — load known identifiers ONCE at sync start
+            Set<String> knownDois = new HashSet<>(paperRepository.findAllDois());
+            Set<String> knownSourceIds = new HashSet<>(paperRepository.findAllSourceIdentifiers());
+            log.info("[SYNC] Loaded {} known DOIs + {} known source IDs for pre-filtering",
+                    knownDois.size(), knownSourceIds.size());
+
             boolean semanticScholarRateLimited = false;
+
+            // [Fix #4] Early stopping config
+            boolean earlyStoppingEnabled = appProperties.getSync().isEarlyStoppingEnabled();
+            int earlyStopThreshold = Math.max(1, appProperties.getSync().getEarlyStopConsecutiveEmptyPages());
 
             outer:
             for (String query : queries) {
                 if (!StringUtils.hasText(query)) {
                     continue;
                 }
+                String trimmedQuery = query.trim();
+
                 for (String source : enabledSources) {
                     if ("SemanticScholar".equals(source) && semanticScholarRateLimited) {
                         continue;
                     }
-                    for (int page = 1; page <= maxPages; page++) {
-                        if (totalFetched >= maxPapers) {
+
+                    String sourceTypeKey = source.toUpperCase().replace(" ", "");
+
+                    // --- Resume Support: Load or create KeywordSyncState ---
+                    KeywordSyncState crawlerState = keywordSyncStateRepository
+                            .findByKeywordAndSourceType(trimmedQuery, sourceTypeKey)
+                            .orElse(null);
+
+                    if (crawlerState != null && crawlerState.getStatus() == KeywordSyncStatus.COMPLETED) {
+                        log.info("[SYNC] Keyword={} Source={} COMPLETED. Skipping.", trimmedQuery, sourceTypeKey);
+                        continue;
+                    }
+
+                    if (crawlerState == null) {
+                        crawlerState = KeywordSyncState.builder()
+                                .keyword(trimmedQuery)
+                                .sourceType(sourceTypeKey)
+                                .lastPage(0)
+                                .status(KeywordSyncStatus.IN_PROGRESS)
+                                .build();
+                        crawlerState = keywordSyncStateRepository.save(crawlerState);
+                    }
+
+                    int startPage = crawlerState.getLastPage() + 1;
+                    log.info("[SYNC] Keyword={} Source={} Resume Page={}", trimmedQuery, sourceTypeKey, startPage);
+
+                    int queryApiCalls = 0;
+                    int queryPagesFetched = 0;
+                    int queryPapersFetched = 0;
+                    int queryPapersInsertedBefore = totalPapersInserted;
+                    // [Fix #4] Consecutive empty pages counter cho early stopping
+                    int consecutiveEmptyPages = 0;
+
+                    for (int page = startPage; page <= maxPages; page++) {
+                        // [Fix #2] Check graceful shutdown
+                        if (shutdownRequested) {
+                            log.info("[SYNC] Shutdown requested, stopping gracefully at page {}", page);
+                            sync.setErrorMessage("Application shutdown — will resume next run");
                             break outer;
                         }
+
+                        // [Fix #6] Dùng totalPapersInserted thay vì totalFetched
+                        if (totalPapersInserted >= maxPapers) {
+                            log.info("[SYNC] Keyword={} reached max-papers-per-run limit ({}). Will resume from page {} next run.",
+                                    trimmedQuery, maxPapers, page);
+                            break outer;
+                        }
+                        
+                        totalApiCalls++;
+                        totalPagesFetched++;
+                        queryApiCalls++;
+                        queryPagesFetched++;
+
                         List<ExternalPaperMetadata> batch;
                         try {
                             if ("OpenAlex".equals(source)) {
-                                batch = openAlexClient.fetchWorks(query.trim(), page, fromDate);
+                                batch = openAlexClient.fetchWorks(trimmedQuery, page, fromDate);
                             } else {
-                                batch = semanticScholarClient.fetchWorks(query.trim(), page);
+                                batch = semanticScholarClient.fetchWorks(trimmedQuery, page);
                             }
+                        } catch (com.norman.swp391.exception.OpenAlexQuotaExhaustedException ex) {
+                            log.error("[SYNC] Keyword={} OpenAlex quota exhausted at page {}. Will resume next run.",
+                                    trimmedQuery, page);
+                            throw ex;
                         } catch (org.springframework.web.client.HttpClientErrorException.TooManyRequests ex) {
-                            log.error("Semantic Scholar rate limit reached. Disabling Semantic Scholar for the remainder of this sync run.");
+                            log.error("[SYNC] Keyword={} Semantic Scholar rate limit at page {}.", trimmedQuery, page);
                             semanticScholarRateLimited = true;
-                            break; // break the page loop for SemanticScholar
+                            break;
                         } catch (Exception ex) {
-                            log.warn("{} fetch failed for query '{}' page {}: {}", source, query, page, ex.getMessage());
+                            log.warn("[SYNC] Keyword={} {} fetch failed page {}: {}", trimmedQuery, source, page, ex.getMessage());
                             continue;
                         }
+
+                        // --- Completion Detection ---
                         if (batch.isEmpty()) {
+                            crawlerState.setStatus(KeywordSyncStatus.COMPLETED);
+                            crawlerState.setLastSyncTime(LocalDateTime.now());
+                            keywordSyncStateRepository.save(crawlerState);
+                            log.info("[SYNC] Keyword={} Source={} COMPLETED (empty results at page {})",
+                                    trimmedQuery, sourceTypeKey, page);
                             break;
                         }
+
+                        totalPapersFetched += batch.size();
+                        queryPapersFetched += batch.size();
+
+                        // Determine the last publication date in this batch
+                        LocalDate batchLastPubDate = null;
+                        for (ExternalPaperMetadata m : batch) {
+                            if (m.publicationDate() != null) {
+                                if (batchLastPubDate == null || m.publicationDate().isAfter(batchLastPubDate)) {
+                                    batchLastPubDate = m.publicationDate();
+                                }
+                            }
+                        }
+
+                        // [Fix #8] Pre-filter: skip papers already in DB using in-memory sets
+                        int newInPage = 0;
                         for (ExternalPaperMetadata metadata : batch) {
-                            if (totalFetched >= maxPapers) {
+                            if (totalPapersInserted >= maxPapers) {
                                 break outer;
                             }
 
@@ -227,41 +346,112 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                                 }
                             }
 
+                            // [Fix #8] DOI pre-filter — skip already known papers
+                            boolean alreadyKnown = false;
+                            if (StringUtils.hasText(metadata.doi())
+                                    && knownDois.contains(metadata.doi().toLowerCase().trim())) {
+                                alreadyKnown = true;
+                            }
+                            if (!alreadyKnown && StringUtils.hasText(metadata.sourceIdentifier())
+                                    && knownSourceIds.contains(metadata.sourceIdentifier().toLowerCase().trim())) {
+                                alreadyKnown = true;
+                            }
+                            if (alreadyKnown) {
+                                continue; // Skip — don't add to ingestBuffer
+                            }
+
+                            newInPage++;
                             ingestBuffer.add(metadata);
                             if (ingestBuffer.size() >= ingestBatchSize) {
-                                totalFetched += flushIngest(ingestBuffer, newPaperIds, maxPapers - totalFetched);
+                                int inserted = flushIngest(ingestBuffer, newPaperIds, maxPapers - totalPapersInserted,
+                                        knownDois, knownSourceIds);
+                                totalPapersInserted += inserted;
                                 ingestBuffer.clear();
                             }
                         }
+
+                        // [Fix #4] Early stopping — detect consecutive pages with 0 new papers
+                        // Lưu ý: KHÔNG mark COMPLETED vì keyword có thể có papers mới trong tương lai.
+                        // Chỉ break ra khỏi loop page hiện tại → lần sync sau sẽ crawl lại từ lastPage.
+                        if (newInPage == 0) {
+                            consecutiveEmptyPages++;
+                            if (earlyStoppingEnabled && consecutiveEmptyPages >= earlyStopThreshold) {
+                                globalEarlyStopTriggered = true;
+                                log.info("[SYNC] Keyword={} Source={} EARLY STOP — {} consecutive pages with 0 new papers at page {}. Will retry next sync.",
+                                        trimmedQuery, sourceTypeKey, consecutiveEmptyPages, page);
+                                break; // Chỉ break page loop, KHÔNG mark COMPLETED
+                            }
+                        } else {
+                            consecutiveEmptyPages = 0;
+                        }
+
+                        // --- Persist progress immediately after each successfully processed page ---
+                        crawlerState.setLastPage(page);
+                        if (batchLastPubDate != null) {
+                            crawlerState.setLastPublicationDate(batchLastPubDate);
+                        }
+                        crawlerState.setLastSyncTime(LocalDateTime.now());
+                        keywordSyncStateRepository.save(crawlerState);
+
+                        log.info("[SYNC] Keyword={} Page={} PapersFetched={} NewInPage={} PapersInserted={} PapersSkipped={} LastPublicationDate={}",
+                                trimmedQuery, page, batch.size(), newInPage,
+                                totalPapersInserted - queryPapersInsertedBefore,
+                                queryPapersFetched - (totalPapersInserted - queryPapersInsertedBefore),
+                                batchLastPubDate);
                     }
+
+                    // Log Query-specific Effectiveness Metrics
+                    int queryPapersInserted = totalPapersInserted - queryPapersInsertedBefore;
+                    int queryPapersSkipped = queryPapersFetched - queryPapersInserted;
+                    log.info("[SYNC] Keyword={} Source={} Summary: PagesFetched={} ApiCalls={} PapersFetched={} PapersInserted={} PapersSkipped={}",
+                            trimmedQuery, sourceTypeKey, queryPagesFetched, queryApiCalls,
+                            queryPapersFetched, queryPapersInserted, queryPapersSkipped);
                 }
             }
 
             if (!ingestBuffer.isEmpty()) {
-                totalFetched += flushIngest(ingestBuffer, newPaperIds, maxPapers - totalFetched);
+                int inserted = flushIngest(ingestBuffer, newPaperIds, maxPapers - totalPapersInserted,
+                        knownDois, knownSourceIds);
+                totalPapersInserted += inserted;
             }
 
-            paperReviewService.expireStalePendingReviews();
-            keywordTrendService.recalculateAll();
-            int backfillMonths = appProperties.getSync().getTrendBackfillMonths();
-            if (backfillMonths > 0) {
-                keywordTrendService.backfillHistoricalMonths(backfillMonths);
-            }
-            notificationService.notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords());
-            notificationService.notifyNewPapersForSubscriptions(newPaperIds);
+            // [Fix #7] Post-sync tasks — each isolated with try-catch
+            runPostSyncTask("expireStalePendingReviews",
+                    () -> paperReviewService.expireStalePendingReviews());
+            runPostSyncTask("recalculateAll",
+                    () -> keywordTrendService.recalculateAll());
+            runPostSyncTask("backfillHistoricalMonths", () -> {
+                int backfillMonths = appProperties.getSync().getTrendBackfillMonths();
+                if (backfillMonths > 0) {
+                    keywordTrendService.backfillHistoricalMonths(backfillMonths);
+                }
+            });
+            runPostSyncTask("notifyTrending",
+                    () -> notificationService.notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords()));
+            runPostSyncTask("notifyNewPapers",
+                    () -> notificationService.notifyNewPapersForSubscriptions(newPaperIds));
 
-            sync.setStatus(SyncStatus.SUCCESS);
-            sync.setPapersFetched(totalFetched);
+            // [Fix #2] Check if shutdown was requested during sync — mark appropriately
+            if (shutdownRequested) {
+                sync.setStatus(SyncStatus.FAILED);
+                sync.setErrorMessage("Application shutdown — will resume next run");
+            } else {
+                sync.setStatus(SyncStatus.SUCCESS);
+            }
             if (openAlexEnabled) {
                 apiSourceService.recordSyncResult("OpenAlex", true);
             }
             if (semanticScholarEnabled) {
                 apiSourceService.recordSyncResult("SemanticScholar", true);
             }
-            log.info("Sync #{} completed: {} papers", syncLogId, totalFetched);
+            log.info("[SYNC] Run #{} completed: {} papers inserted total", syncLogId, totalPapersInserted);
         } catch (Exception ex) {
-            log.error("Sync #{} failed", syncLogId, ex);
-            sync.setStatus(SyncStatus.FAILED);
+            log.error("[SYNC] Run #{} failed", syncLogId, ex);
+            if (ex instanceof com.norman.swp391.exception.OpenAlexQuotaExhaustedException) {
+                sync.setStatus(SyncStatus.FAILED_QUOTA_EXHAUSTED);
+            } else {
+                sync.setStatus(SyncStatus.FAILED);
+            }
             sync.setErrorMessage(ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
             if (openAlexEnabled) {
                 apiSourceService.recordSyncResult("OpenAlex", false);
@@ -270,242 +460,442 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 apiSourceService.recordSyncResult("SemanticScholar", false);
             }
         } finally {
+            syncThread = null; // [Fix #2] Clear thread reference
             sync.setFinishedAt(LocalDateTime.now());
-            if (sync.getPapersFetched() == 0 && sync.getStatus() == SyncStatus.SUCCESS) {
-                sync.setPapersFetched(totalFetched);
-            } else if (sync.getStatus() == SyncStatus.RUNNING) {
-                sync.setPapersFetched(totalFetched);
-            }
+            sync.setApiCalls(totalApiCalls);
+            sync.setPagesFetched(totalPagesFetched);
+            sync.setPapersFetched(totalPapersFetched);
+            sync.setPapersInserted(totalPapersInserted);
+            sync.setPapersSkipped(Math.max(0, totalPapersFetched - totalPapersInserted));
+            sync.setEarlyStopTriggered(globalEarlyStopTriggered);
             syncLogRepository.save(sync);
         }
     }
 
-    private int flushIngest(List<ExternalPaperMetadata> batch, Set<Long> newPaperIds, int maxRemaining) {
+    /**
+     * [Fix #7] Helper chạy post-sync task với error isolation.
+     */
+    private void runPostSyncTask(String taskName, Runnable task) {
+        try {
+            task.run();
+        } catch (Exception ex) {
+            log.error("[SYNC] Post-sync task '{}' failed: {}", taskName, ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Flush ingest buffer vào DB. Cập nhật knownDois/knownSourceIds sau khi insert.
+     */
+    private int flushIngest(List<ExternalPaperMetadata> batch, Set<Long> newPaperIds, int maxRemaining,
+                            Set<String> knownDois, Set<String> knownSourceIds) {
         if (batch.isEmpty() || maxRemaining <= 0) {
             return 0;
         }
         List<ExternalPaperMetadata> slice = batch.size() > maxRemaining ? batch.subList(0, maxRemaining) : batch;
+
+        // [Fix #5] Nới lỏng validation — chỉ yêu cầu title, publicationDate, doi
+        List<ExternalPaperMetadata> validMetas = new ArrayList<>();
+        for (ExternalPaperMetadata metadata : slice) {
+            if (StringUtils.hasText(metadata.title())
+                    && metadata.publicationDate() != null
+                    && StringUtils.hasText(metadata.doi())) {
+                validMetas.add(metadata);
+            }
+        }
+
+        if (validMetas.isEmpty()) {
+            return 0;
+        }
+
         Integer saved = transactionTemplate.execute(status -> {
+            // 1. Bulk fetch existing papers
+            List<String> dois = validMetas.stream().map(ExternalPaperMetadata::doi).filter(StringUtils::hasText).toList();
+            List<String> ids = validMetas.stream().map(ExternalPaperMetadata::sourceIdentifier).filter(StringUtils::hasText).toList();
+            List<Paper> existingPapersList = paperRepository.findByDoiInOrSourceIdentifierIn(
+                    dois.isEmpty() ? List.of("") : dois,
+                    ids.isEmpty() ? List.of("") : ids
+            );
+
+            Map<String, Paper> paperByDoi = new HashMap<>();
+            Map<String, Paper> paperBySource = new HashMap<>();
+            for (Paper p : existingPapersList) {
+                if (StringUtils.hasText(p.getDoi())) {
+                    paperByDoi.put(p.getDoi().toLowerCase().trim(), p);
+                }
+                if (StringUtils.hasText(p.getSourceType()) && StringUtils.hasText(p.getSourceIdentifier())) {
+                    String key = p.getSourceType().toUpperCase() + ":" + p.getSourceIdentifier().toLowerCase().trim();
+                    paperBySource.put(key, p);
+                }
+            }
+
+            // 2. Bulk fetch existing keywords
+            Set<String> allKeywordTerms = new HashSet<>();
+            for (ExternalPaperMetadata metadata : validMetas) {
+                if (metadata.keywords() != null) {
+                    for (ExternalKeywordInfo kw : metadata.keywords()) {
+                        if (StringUtils.hasText(kw.term())) {
+                            allKeywordTerms.add(kw.term().trim().toLowerCase());
+                        }
+                    }
+                }
+            }
+            List<Keyword> existingKeywordsList = keywordRepository.findByTermInIgnoreCase(
+                    allKeywordTerms.isEmpty() ? List.of("") : allKeywordTerms
+            );
+            Map<String, Keyword> keywordMap = new HashMap<>();
+            for (Keyword k : existingKeywordsList) {
+                keywordMap.put(k.getTerm().toLowerCase().trim(), k);
+            }
+
+            // Save new keywords or update existing ones in batch
+            List<Keyword> keywordsToSave = new ArrayList<>();
+            for (ExternalPaperMetadata metadata : validMetas) {
+                if (metadata.keywords() == null) continue;
+                for (ExternalKeywordInfo info : metadata.keywords()) {
+                    if (!StringUtils.hasText(info.term())) continue;
+                    String term = info.term().trim();
+                    String domain = StringUtils.hasText(info.domain()) ? info.domain().trim() : "General";
+                    Keyword kw = keywordMap.get(term.toLowerCase());
+                    if (kw == null) {
+                        kw = Keyword.builder()
+                                .term(term)
+                                .domain(domain)
+                                .createdAt(LocalDateTime.now())
+                                .build();
+                        keywordMap.put(term.toLowerCase(), kw);
+                        keywordsToSave.add(kw);
+                    } else if ("General".equalsIgnoreCase(kw.getDomain()) && !"General".equalsIgnoreCase(domain)) {
+                        kw.setDomain(domain);
+                        keywordsToSave.add(kw);
+                    }
+                }
+            }
+            if (!keywordsToSave.isEmpty()) {
+                keywordRepository.saveAll(keywordsToSave);
+            }
+
+            // 3. [Fix #3] Bulk fetch existing authors — by sourceId AND by name (eliminates N+1)
+            Set<String> allAuthorIds = new HashSet<>();
+            Set<String> allAuthorNames = new HashSet<>();
+            for (ExternalPaperMetadata metadata : validMetas) {
+                List<ExternalAuthorInfo> authorInfos = new ArrayList<>();
+                if (metadata.authorDetails() != null) {
+                    authorInfos.addAll(metadata.authorDetails());
+                } else if (metadata.authors() != null) {
+                    for (String name : metadata.authors()) {
+                        if (StringUtils.hasText(name)) {
+                            authorInfos.add(new ExternalAuthorInfo(name.trim(), "LOCAL", null, ""));
+                        }
+                    }
+                }
+                for (ExternalAuthorInfo auth : authorInfos) {
+                    if (StringUtils.hasText(auth.sourceIdentifier()) && "OPENALEX".equalsIgnoreCase(auth.sourceType())) {
+                        allAuthorIds.add(auth.sourceIdentifier().trim().toLowerCase());
+                    }
+                    if (StringUtils.hasText(auth.name())) {
+                        allAuthorNames.add(auth.name().trim().toLowerCase());
+                    }
+                }
+            }
+            List<Author> existingAuthorsList = authorRepository.findBySourceTypeAndSourceIdentifierIn(
+                    "OPENALEX",
+                    allAuthorIds.isEmpty() ? List.of("") : allAuthorIds
+            );
+            Map<String, Author> authorBySourceId = new HashMap<>();
+            for (Author a : existingAuthorsList) {
+                if (StringUtils.hasText(a.getSourceIdentifier())) {
+                    authorBySourceId.put(a.getSourceIdentifier().toLowerCase().trim(), a);
+                }
+            }
+
+            // [Fix #3] Bulk fetch by name — replaces N+1 findFirstByNameAndAffiliation calls
+            List<Author> existingByName = authorRepository.findByNameInIgnoreCase(
+                    allAuthorNames.isEmpty() ? List.of("") : allAuthorNames
+            );
+            Map<String, List<Author>> authorsByNameLower = new HashMap<>();
+            for (Author a : existingByName) {
+                authorsByNameLower.computeIfAbsent(a.getName().toLowerCase().trim(), k -> new ArrayList<>()).add(a);
+            }
+
+            Map<String, Author> authorByNameAffiliation = new HashMap<>();
+            List<Author> authorsToSave = new ArrayList<>();
+
+            for (ExternalPaperMetadata metadata : validMetas) {
+                List<ExternalAuthorInfo> authorInfos = new ArrayList<>();
+                if (metadata.authorDetails() != null && !metadata.authorDetails().isEmpty()) {
+                    authorInfos.addAll(metadata.authorDetails());
+                } else if (metadata.authors() != null) {
+                    for (String name : metadata.authors()) {
+                        if (StringUtils.hasText(name)) {
+                            authorInfos.add(new ExternalAuthorInfo(name.trim(), "LOCAL", null, ""));
+                        }
+                    }
+                }
+
+                for (ExternalAuthorInfo info : authorInfos) {
+                    if (!StringUtils.hasText(info.name())) continue;
+                    String trimmed = info.name().trim();
+                    String affiliation = info.affiliation() != null ? info.affiliation().trim() : "";
+                    String nameAffKey = trimmed.toLowerCase() + "||" + affiliation.toLowerCase();
+
+                    Author author = null;
+                    if (StringUtils.hasText(info.sourceIdentifier()) && "OPENALEX".equalsIgnoreCase(info.sourceType())) {
+                        author = authorBySourceId.get(info.sourceIdentifier().toLowerCase().trim());
+                    }
+                    if (author == null) {
+                        // [Fix #3] In-memory lookup instead of DB query
+                        author = authorByNameAffiliation.get(nameAffKey);
+                        if (author == null) {
+                            List<Author> candidates = authorsByNameLower.get(trimmed.toLowerCase());
+                            if (candidates != null) {
+                                for (Author c : candidates) {
+                                    String cAff = c.getAffiliation() != null ? c.getAffiliation().trim() : "";
+                                    if (cAff.equalsIgnoreCase(affiliation)) {
+                                        author = c;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (author != null) {
+                                authorByNameAffiliation.put(nameAffKey, author);
+                            }
+                        }
+                    }
+
+                    if (author == null) {
+                        author = Author.builder()
+                                .name(truncateText(trimmed, 255))
+                                .affiliation(truncateText(affiliation, 500))
+                                .citationCount(0)
+                                .sourceType(info.sourceType())
+                                .sourceIdentifier(info.sourceIdentifier())
+                                .build();
+                        if (StringUtils.hasText(info.sourceIdentifier()) && "OPENALEX".equalsIgnoreCase(info.sourceType())) {
+                            authorBySourceId.put(info.sourceIdentifier().toLowerCase().trim(), author);
+                        }
+                        authorByNameAffiliation.put(nameAffKey, author);
+                        // Also add to bulk name lookup cache so future lookups find it
+                        authorsByNameLower.computeIfAbsent(trimmed.toLowerCase(), k -> new ArrayList<>()).add(author);
+                        authorsToSave.add(author);
+                    } else {
+                        boolean dirty = false;
+                        if (StringUtils.hasText(info.sourceIdentifier()) && !Objects.equals(info.sourceIdentifier(), author.getSourceIdentifier())) {
+                            author.setSourceType(info.sourceType());
+                            author.setSourceIdentifier(info.sourceIdentifier());
+                            dirty = true;
+                        }
+                        if (StringUtils.hasText(affiliation) && !affiliation.equals(author.getAffiliation())) {
+                            author.setAffiliation(affiliation);
+                            dirty = true;
+                        }
+                        if (dirty) {
+                            authorsToSave.add(author);
+                        }
+                    }
+                }
+            }
+            if (!authorsToSave.isEmpty()) {
+                authorRepository.saveAll(authorsToSave);
+            }
+
+            // 4. Batch process journals using local cache to avoid redundant database searches
+            Map<String, Journal> journalMap = new HashMap<>();
+            List<Paper> papersToSave = new ArrayList<>();
+            Map<ExternalPaperMetadata, Paper> metaToPaperMap = new HashMap<>();
+            Set<Paper> newPapersSet = new HashSet<>();
+
+            for (ExternalPaperMetadata metadata : validMetas) {
+                Paper paper = null;
+                if (StringUtils.hasText(metadata.sourceIdentifier()) && StringUtils.hasText(metadata.sourceType())) {
+                    String key = metadata.sourceType().toUpperCase() + ":" + metadata.sourceIdentifier().toLowerCase().trim();
+                    paper = paperBySource.get(key);
+                }
+                if (paper == null && StringUtils.hasText(metadata.doi())) {
+                    paper = paperByDoi.get(metadata.doi().toLowerCase().trim());
+                }
+
+                boolean isNew = (paper == null);
+                if (isNew) {
+                    paper = Paper.builder()
+                            .createdAt(LocalDateTime.now())
+                            .status(PaperStatus.ACTIVE)
+                            .reviewStatus(PaperReviewStatus.NONE)
+                            .citationCount(0)
+                            .openAccess(false)
+                            .build();
+                    newPapersSet.add(paper);
+                    // Register in lookup maps immediately to prevent duplicate DOI within same batch
+                    if (StringUtils.hasText(metadata.doi())) {
+                        paperByDoi.put(metadata.doi().toLowerCase().trim(), paper);
+                    }
+                    if (StringUtils.hasText(metadata.sourceIdentifier()) && StringUtils.hasText(metadata.sourceType())) {
+                        String regKey = metadata.sourceType().toUpperCase() + ":" + metadata.sourceIdentifier().toLowerCase().trim();
+                        paperBySource.put(regKey, paper);
+                    }
+                }
+
+                if (isNew) {
+                    paper.setTitle(truncateText(metadata.title(), 1000));
+                    paper.setAbstractText(metadata.abstractText());
+                    paper.setDoi(truncateText(metadata.doi(), 255));
+                    if (metadata.publicationDate() != null) {
+                        paper.setPublicationDate(metadata.publicationDate());
+                    }
+                    if (metadata.citationCount() != null) {
+                        paper.setCitationCount(metadata.citationCount());
+                    }
+                    paper.setPdfUrl(truncateText(metadata.pdfUrl(), 500));
+                    paper.setSourceUrl(truncateText(metadata.landingPageUrl(), 500));
+                    paper.setOpenAccess(metadata.openAccess() != null ? metadata.openAccess() : paper.isOpenAccess());
+                    if (StringUtils.hasText(metadata.sourceIdentifier())) {
+                        paper.setSourceType(truncateText(metadata.sourceType(), 50));
+                        paper.setSourceIdentifier(truncateText(metadata.sourceIdentifier(), 100));
+                    }
+                    paper.setPrimarySource(metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
+                    paper.setStatus(PaperStatus.ACTIVE);
+                    paper.setReviewStatus(PaperReviewStatus.NONE);
+                    if (paper.getCreatedAt() == null) {
+                        paper.setCreatedAt(LocalDateTime.now());
+                    }
+                } else {
+                    paper.setPrimarySource(metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
+                    paper.setStatus(PaperStatus.ACTIVE);
+                    paperReviewService.applyIncomingMetadata(paper, metadata, metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
+                }
+
+                if (StringUtils.hasText(metadata.journal())) {
+                    String jName = metadata.journal().trim();
+                    Journal journalEntity = journalMap.computeIfAbsent(jName, name -> {
+                        String domain = metadata.keywords() != null && !metadata.keywords().isEmpty()
+                                ? metadata.keywords().get(0).domain()
+                                : "General";
+                        try {
+                            return journalService.findOrCreate(name, null, domain);
+                        } catch (Exception ex) {
+                            log.debug("Journal link skipped: {}", ex.getMessage());
+                            return null;
+                        }
+                    });
+                    if (journalEntity != null && journalEntity.getId() != null) {
+                        paper.setJournalRef(journalRepository.getReferenceById(journalEntity.getId()));
+                        paper.setJournal(truncateText(journalEntity.getName(), 500));
+                    } else {
+                        paper.setJournal(truncateText(metadata.journal(), 500));
+                    }
+                }
+
+                papersToSave.add(paper);
+                metaToPaperMap.put(metadata, paper);
+            }
+
+            // Bulk save all papers to DB
+            List<Paper> savedPapers = paperRepository.saveAll(papersToSave);
+
+            // 5. Bulk fetch paper relationships (keywords & authors)
+            List<Long> savedPaperIds = savedPapers.stream().map(Paper::getId).filter(Objects::nonNull).toList();
+            List<PaperKeyword> existingPaperKeywords = paperKeywordRepository.findByPaperIdInWithKeyword(savedPaperIds);
+            Map<Long, Set<Long>> paperToKeywordsMap = new HashMap<>();
+            for (PaperKeyword pk : existingPaperKeywords) {
+                paperToKeywordsMap.computeIfAbsent(pk.getPaper().getId(), k -> new HashSet<>())
+                        .add(pk.getKeyword().getKeywordId());
+            }
+
+            List<PaperAuthor> existingPaperAuthors = paperAuthorRepository.findByPaperIdInWithAuthor(savedPaperIds);
+            Map<Long, Set<Long>> paperToAuthorsMap = new HashMap<>();
+            for (PaperAuthor pa : existingPaperAuthors) {
+                paperToAuthorsMap.computeIfAbsent(pa.getPaper().getId(), k -> new HashSet<>())
+                        .add(pa.getAuthor().getId());
+            }
+
+            List<PaperKeyword> paperKeywordsToSave = new ArrayList<>();
+            List<PaperAuthor> paperAuthorsToSave = new ArrayList<>();
+
+            for (ExternalPaperMetadata metadata : validMetas) {
+                Paper paper = metaToPaperMap.get(metadata);
+                if (paper == null || paper.getId() == null) continue;
+
+                // Link keywords in batch
+                if (metadata.keywords() != null) {
+                    Set<Long> existingKeywordIds = paperToKeywordsMap.computeIfAbsent(paper.getId(), k -> new HashSet<>());
+                    for (ExternalKeywordInfo info : metadata.keywords()) {
+                        if (!StringUtils.hasText(info.term())) continue;
+                        Keyword kw = keywordMap.get(info.term().trim().toLowerCase());
+                        if (kw != null && kw.getKeywordId() != null) {
+                            if (!existingKeywordIds.contains(kw.getKeywordId())) {
+                                paperKeywordsToSave.add(PaperKeyword.builder().paper(paper).keyword(kw).build());
+                                existingKeywordIds.add(kw.getKeywordId());
+                            }
+                        }
+                    }
+                }
+
+                // Link authors in batch
+                List<ExternalAuthorInfo> authorInfos = new ArrayList<>();
+                if (metadata.authorDetails() != null && !metadata.authorDetails().isEmpty()) {
+                    authorInfos.addAll(metadata.authorDetails());
+                } else if (metadata.authors() != null) {
+                    for (String name : metadata.authors()) {
+                        if (StringUtils.hasText(name)) {
+                            authorInfos.add(new ExternalAuthorInfo(name.trim(), "LOCAL", null, ""));
+                        }
+                    }
+                }
+
+                Set<Long> existingAuthorIds = paperToAuthorsMap.computeIfAbsent(paper.getId(), k -> new HashSet<>());
+                for (ExternalAuthorInfo info : authorInfos) {
+                    if (!StringUtils.hasText(info.name())) continue;
+                    String trimmed = info.name().trim();
+                    String affiliation = info.affiliation() != null ? info.affiliation().trim() : "";
+                    String nameAffKey = trimmed.toLowerCase() + "||" + affiliation.toLowerCase();
+
+                    Author author = null;
+                    if (StringUtils.hasText(info.sourceIdentifier()) && "OPENALEX".equalsIgnoreCase(info.sourceType())) {
+                        author = authorBySourceId.get(info.sourceIdentifier().toLowerCase().trim());
+                    }
+                    if (author == null) {
+                        author = authorByNameAffiliation.get(nameAffKey);
+                    }
+
+                    if (author != null && author.getId() != null) {
+                        if (!existingAuthorIds.contains(author.getId())) {
+                            paperAuthorsToSave.add(PaperAuthor.builder().paper(paper).author(author).build());
+                            existingAuthorIds.add(author.getId());
+                        }
+                    }
+                }
+            }
+
+            if (!paperKeywordsToSave.isEmpty()) {
+                paperKeywordRepository.saveAll(paperKeywordsToSave);
+            }
+            if (!paperAuthorsToSave.isEmpty()) {
+                paperAuthorRepository.saveAll(paperAuthorsToSave);
+            }
+
+            // Return how many NEW papers were added to newPaperIds
             int count = 0;
-            for (ExternalPaperMetadata meta : slice) {
-                Long paperId = savePaperWithRelations(meta);
-                if (paperId != null) {
-                    newPaperIds.add(paperId);
+            for (Paper p : savedPapers) {
+                if (newPapersSet.contains(p)) {
+                    newPaperIds.add(p.getId());
                     count++;
+                    // [Fix #8] Update known sets with newly inserted papers
+                    if (StringUtils.hasText(p.getDoi())) {
+                        knownDois.add(p.getDoi().toLowerCase().trim());
+                    }
+                    if (StringUtils.hasText(p.getSourceIdentifier())) {
+                        knownSourceIds.add(p.getSourceIdentifier().toLowerCase().trim());
+                    }
                 }
             }
             return count;
         });
+
         return saved != null ? saved : 0;
     }
-
-
 
     private String truncateText(String text, int maxLength) {
         if (text == null) return null;
         if (text.length() <= maxLength) return text;
         return text.substring(0, maxLength - 3) + "...";
-    }
-
-    private Long savePaperWithRelations(ExternalPaperMetadata metadata) {
-        if (!StringUtils.hasText(metadata.title())) {
-            return null;
-        }
-        if (metadata.publicationDate() == null) {
-            return null;
-        }
-        if (!StringUtils.hasText(metadata.doi())) {
-            return null;
-        }
-        if (!StringUtils.hasText(metadata.abstractText())) {
-            return null;
-        }
-        if (!StringUtils.hasText(metadata.landingPageUrl()) && !StringUtils.hasText(metadata.pdfUrl())) {
-            return null;
-        }
-        if (!StringUtils.hasText(metadata.journal())) {
-            return null;
-        }
-        if (metadata.keywords() == null || metadata.keywords().isEmpty()) {
-            return null;
-        }
-        if (metadata.authors() == null || metadata.authors().isEmpty()) {
-            return null;
-        }
-        Optional<Paper> existing = findExistingPaper(metadata);
-        boolean isNew = existing.isEmpty();
-        Paper paper = existing.orElseGet(this::newPaper);
-
-        if (isNew) {
-            paper.setTitle(truncateText(metadata.title(), 1000));
-            paper.setAbstractText(metadata.abstractText());
-            paper.setDoi(truncateText(metadata.doi(), 255));
-            if (metadata.publicationDate() != null) {
-                paper.setPublicationDate(metadata.publicationDate());
-            }
-            if (metadata.citationCount() != null) {
-                paper.setCitationCount(metadata.citationCount());
-            }
-            paper.setPdfUrl(truncateText(metadata.pdfUrl(), 500));
-            paper.setSourceUrl(truncateText(metadata.landingPageUrl(), 500));
-            paper.setOpenAccess(metadata.openAccess() != null ? metadata.openAccess() : paper.isOpenAccess());
-            if (StringUtils.hasText(metadata.sourceIdentifier())) {
-                paper.setSourceType(truncateText(metadata.sourceType(), 50));
-                paper.setSourceIdentifier(truncateText(metadata.sourceIdentifier(), 100));
-            }
-            paper.setPrimarySource(metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
-            paper.setStatus(PaperStatus.ACTIVE);
-            paper.setReviewStatus(PaperReviewStatus.NONE);
-            if (paper.getCreatedAt() == null) {
-                paper.setCreatedAt(LocalDateTime.now());
-            }
-            paper = paperRepository.save(paper);
-        } else {
-            paper.setPrimarySource(metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
-            paper.setStatus(PaperStatus.ACTIVE);
-            
-            paperReviewService.applyIncomingMetadata(paper, metadata, metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
-        }
-
-        linkKeywords(paper, metadata.keywords());
-        linkAuthors(paper, metadata);
-
-        if (StringUtils.hasText(metadata.journal())) {
-            String domain = metadata.keywords() != null && !metadata.keywords().isEmpty()
-                    ? metadata.keywords().get(0).domain()
-                    : "General";
-            try {
-                var journalEntity = journalService.findOrCreate(metadata.journal(), null, domain);
-                if (journalEntity != null && journalEntity.getId() != null) {
-                    paper.setJournalRef(journalRepository.getReferenceById(journalEntity.getId()));
-                    paper.setJournal(truncateText(journalEntity.getName(), 500));
-                    paperRepository.save(paper);
-                }
-            } catch (Exception ex) {
-                log.debug("Journal link skipped: {}", ex.getMessage());
-                paper.setJournal(truncateText(metadata.journal(), 500));
-                paperRepository.save(paper);
-            }
-        }
-        return isNew ? paper.getId() : null;
-    }
-
-    private Optional<Paper> findExistingPaper(ExternalPaperMetadata metadata) {
-        if (StringUtils.hasText(metadata.sourceIdentifier()) && StringUtils.hasText(metadata.sourceType())) {
-            Optional<Paper> bySource = paperRepository.findBySourceTypeAndSourceIdentifier(
-                    metadata.sourceType(), metadata.sourceIdentifier());
-            if (bySource.isPresent()) {
-                return bySource;
-            }
-        }
-        if (StringUtils.hasText(metadata.doi())) {
-            return paperRepository.findByDoi(metadata.doi());
-        }
-        return Optional.empty();
-    }
-
-    private Paper newPaper() {
-        return Paper.builder()
-                .createdAt(LocalDateTime.now())
-                .status(PaperStatus.ACTIVE)
-                .reviewStatus(PaperReviewStatus.NONE)
-                .citationCount(0)
-                .openAccess(false)
-                .build();
-    }
-
-    private void linkKeywords(Paper paper, List<ExternalKeywordInfo> keywords) {
-        if (keywords == null) {
-            return;
-        }
-        Set<Long> existingIds = paperKeywordRepository.findByPaperId(paper.getId()).stream()
-                .map(pk -> pk.getKeyword().getKeywordId())
-                .collect(java.util.stream.Collectors.toSet());
-        for (ExternalKeywordInfo info : keywords) {
-            if (!StringUtils.hasText(info.term())) {
-                continue;
-            }
-            String term = info.term().trim();
-            String domain = StringUtils.hasText(info.domain()) ? info.domain().trim() : "General";
-            Keyword keyword = keywordRepository.findByTerm(term).orElse(null);
-            if (keyword == null) {
-                keyword = keywordRepository.save(Keyword.builder()
-                        .term(term)
-                        .domain(domain)
-                        .createdAt(LocalDateTime.now())
-                        .build());
-            } else if ("General".equalsIgnoreCase(keyword.getDomain()) && !"General".equalsIgnoreCase(domain)) {
-                keyword.setDomain(domain);
-                keyword = keywordRepository.save(keyword);
-            }
-
-            if (!existingIds.contains(keyword.getKeywordId())) {
-                paperKeywordRepository.save(PaperKeyword.builder().paper(paper).keyword(keyword).build());
-                existingIds.add(keyword.getKeywordId());
-            }
-        }
-    }
-
-    private void linkAuthors(Paper paper, ExternalPaperMetadata metadata) {
-        Set<Long> existingIds = paperAuthorRepository.findByPaperId(paper.getId()).stream()
-                .map(pa -> pa.getAuthor().getId())
-                .collect(java.util.stream.Collectors.toSet());
-
-        if (metadata.authorDetails() != null && !metadata.authorDetails().isEmpty()) {
-            for (ExternalAuthorInfo info : metadata.authorDetails()) {
-                linkOneAuthor(paper, info, existingIds);
-            }
-            return;
-        }
-        if (metadata.authors() == null) {
-            return;
-        }
-        for (String name : metadata.authors()) {
-            if (!StringUtils.hasText(name)) {
-                continue;
-            }
-            linkOneAuthor(paper, new ExternalAuthorInfo(name.trim(), "LOCAL", null, ""), existingIds);
-        }
-    }
-
-    private void linkOneAuthor(Paper paper, ExternalAuthorInfo info, Set<Long> existingIds) {
-        if (!StringUtils.hasText(info.name())) {
-            return;
-        }
-        String trimmed = info.name().trim();
-        String affiliation = info.affiliation() != null ? info.affiliation().trim() : "";
-
-        Author author = null;
-        if (StringUtils.hasText(info.sourceIdentifier()) && StringUtils.hasText(info.sourceType())) {
-            author = authorRepository.findBySourceTypeAndSourceIdentifier(info.sourceType(), info.sourceIdentifier()).orElse(null);
-        }
-        if (author == null) {
-            author = authorRepository
-                    .findFirstByNameAndAffiliationOrderByIdAsc(trimmed, affiliation)
-                    .orElse(null);
-        }
-        if (author == null) {
-            author = authorRepository.save(Author.builder()
-                    .name(trimmed)
-                    .affiliation(affiliation)
-                    .citationCount(0)
-                    .sourceType(info.sourceType())
-                    .sourceIdentifier(info.sourceIdentifier())
-                    .build());
-        } else {
-            if (StringUtils.hasText(info.sourceIdentifier())) {
-                author.setSourceType(info.sourceType());
-                author.setSourceIdentifier(info.sourceIdentifier());
-            }
-            if (StringUtils.hasText(affiliation)) {
-                author.setAffiliation(affiliation);
-            }
-            author = authorRepository.save(author);
-        }
-
-        if (!existingIds.contains(author.getId())) {
-            paperAuthorRepository.save(PaperAuthor.builder().paper(paper).author(author).build());
-            existingIds.add(author.getId());
-        }
     }
 }
