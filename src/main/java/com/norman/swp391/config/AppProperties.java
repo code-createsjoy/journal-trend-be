@@ -62,6 +62,7 @@ public class AppProperties {
         private String baseUrl = "https://api.openalex.org";
         private String mailto;
         private int perPage = 50;
+        private String apiKey;
     }
 
     @Getter
@@ -130,6 +131,12 @@ public class AppProperties {
         private int pendingReviewExpiryDays = 30;
         /** Sau sync/recalculate: backfill bao nhiêu tháng trend (0 = tắt). */
         private int trendBackfillMonths = 12;
+        /** Number of overlap days for safer incremental sync. */
+        private int overlapDays = 7;
+        /** Flag to enable or disable early stopping during sync runs. */
+        private boolean earlyStoppingEnabled = true;
+        /** Dừng crawl keyword khi N trang liên tiếp không có paper mới nào. */
+        private int earlyStopConsecutiveEmptyPages = 3;
     }
 }
 

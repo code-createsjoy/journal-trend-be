@@ -26,6 +26,40 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
         Long getJournalRefId();
     }
 
+    boolean existsByDoi(String doi);
+
+    default boolean existsByOpenAlexId(String openAlexId) {
+        return existsBySourceTypeAndSourceIdentifier("OPENALEX", openAlexId);
+    }
+
+    boolean existsBySourceTypeAndSourceIdentifier(String sourceType, String sourceIdentifier);
+
+    @Query("SELECT p.doi FROM Paper p WHERE p.doi IN :dois")
+    List<String> findExistingDois(@Param("dois") List<String> dois);
+
+    @Query("SELECT p.sourceIdentifier FROM Paper p WHERE p.sourceType = 'OPENALEX' AND p.sourceIdentifier IN :ids")
+    List<String> findExistingOpenAlexIds(@Param("ids") List<String> ids);
+
+    /**
+     * Load tất cả DOIs để dùng cho in-memory pre-filter khi sync.
+     */
+    @Query("SELECT LOWER(p.doi) FROM Paper p WHERE p.doi IS NOT NULL")
+    List<String> findAllDois();
+
+    /**
+     * Load tất cả source identifiers để dùng cho in-memory pre-filter khi sync.
+     */
+    @Query("SELECT LOWER(p.sourceIdentifier) FROM Paper p WHERE p.sourceIdentifier IS NOT NULL")
+    List<String> findAllSourceIdentifiers();
+
+    @Query("""
+        SELECT p FROM Paper p
+        WHERE p.doi IN :dois OR (p.sourceType = 'OPENALEX' AND p.sourceIdentifier IN :ids)
+        """)
+    List<Paper> findByDoiInOrSourceIdentifierIn(
+        @Param("dois") List<String> dois, 
+        @Param("ids") List<String> ids);
+
     /**
      * Tìm kiếm: findByDoiIgnoreCase.
      */

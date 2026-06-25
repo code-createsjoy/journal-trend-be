@@ -37,6 +37,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             @Param("keywordId") Long keywordId, 
             @Param("triggerType") NotificationTriggerType triggerType);
 
+    @Query("SELECT n.user.id, n.paper.id FROM Notification n WHERE n.paper.id IN :paperIds")
+    List<Object[]> findUserIdAndPaperIdByPaperIdIn(@Param("paperIds") List<Long> paperIds);
+
     @Modifying
     @Query("DELETE FROM Notification n WHERE n.user.id = :userId AND n.id IN :ids")
     void deleteByUserIdAndIds(@Param("userId") Long userId, @Param("ids") List<Long> ids);

@@ -2,9 +2,11 @@ package com.norman.swp391.repository;
 
 import com.norman.swp391.entity.SyncLog;
 import com.norman.swp391.entity.enums.SyncStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -47,6 +49,17 @@ public interface SyncLogRepository extends JpaRepository<SyncLog, Long> {
         ORDER BY s.startedAt DESC
         """)
     List<SyncLog> findByStatusWithAdmin(@Param("status") SyncStatus status, Pageable pageable);
+
+    /**
+     * Pessimistic lock query — ngăn 2 request đồng thời tạo 2 sync RUNNING.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT s FROM SyncLog s
+        WHERE s.status = :status
+        ORDER BY s.startedAt DESC
+        """)
+    List<SyncLog> findByStatusForUpdate(@Param("status") SyncStatus status, Pageable pageable);
 
     @Query("""
         SELECT s FROM SyncLog s

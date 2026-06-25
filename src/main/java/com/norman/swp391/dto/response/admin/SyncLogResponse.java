@@ -21,6 +21,11 @@ public class SyncLogResponse {
     private LocalDateTime finishedAt;
     private SyncStatus status;
     private int papersFetched;
+    private int apiCalls;
+    private int pagesFetched;
+    private int papersInserted;
+    private int papersSkipped;
+    private boolean earlyStopTriggered;
     private String errorMessage;
     private Long triggeredByAdminId;
     private String triggeredByAdminEmail;

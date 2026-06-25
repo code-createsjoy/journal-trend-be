@@ -18,6 +18,17 @@ public interface AuthorRepository extends JpaRepository<Author, Long> {
      */
     Optional<Author> findBySourceTypeAndSourceIdentifier(String sourceType, String sourceIdentifier);
 
+    @Query("SELECT a FROM Author a WHERE a.sourceType = :sourceType AND a.sourceIdentifier IN :ids")
+    java.util.List<Author> findBySourceTypeAndSourceIdentifierIn(
+        @Param("sourceType") String sourceType, 
+        @Param("ids") java.util.Collection<String> ids);
+
+    /**
+     * Bulk fetch authors by name (case-insensitive) — dùng thay thế N+1 lookup.
+     */
+    @Query("SELECT a FROM Author a WHERE LOWER(a.name) IN :names")
+    java.util.List<Author> findByNameInIgnoreCase(@Param("names") java.util.Collection<String> names);
+
     /**
      * Tìm tác giả đầu tiên theo tên và đơn vị công tác.
      */

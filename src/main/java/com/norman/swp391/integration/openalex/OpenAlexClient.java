@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -48,13 +49,14 @@ public class OpenAlexClient {
         // TODO: Bỏ comment dòng bên dưới sau khi đã lấy đủ dữ liệu các tháng cũ
         // để hệ thống quay lại ưu tiên lấy các bài báo mới nhất (đề phòng OpenAlex bị
         // quá tải).
-        builder.queryParam("sort", "publication_date:desc");
+        // builder.queryParam("sort", "publication_date:asc");
         String filterStr = "has_doi:true,has_abstract:true";
         if (StringUtils.hasText(fromPublicationDate)) {
             filterStr += ",from_publication_date:" + fromPublicationDate;
         }
         builder.queryParam("filter", filterStr);
         appendMailto(builder);
+        appendApiKey(builder);
         JsonNode root = getJson(builder.toUriString());
         List<ExternalPaperMetadata> results = new ArrayList<>();
         for (JsonNode work : root.path("results")) {
@@ -73,6 +75,7 @@ public class OpenAlexClient {
         String url = buildWorkLookupUrl(idOrDoi.trim());
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url);
         appendMailto(builder);
+        appendApiKey(builder);
         JsonNode node = fetchJsonSafe(builder.toUriString());
         if (node == null || node.isMissingNode()) {
             return Optional.empty();
@@ -107,6 +110,7 @@ public class OpenAlexClient {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
                 appProperties.getOpenalex().getBaseUrl() + "/authors/" + normalized);
         appendMailto(builder);
+        appendApiKey(builder);
         JsonNode node = fetchJsonSafe(builder.toUriString());
         if (node == null || node.isMissingNode()) {
             return Optional.empty();
@@ -329,14 +333,42 @@ public class OpenAlexClient {
         int attempts = Math.max(1, appProperties.getSync().getOpenAlexRetryAttempts());
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
-                return externalApiRestClient.get().uri(url).retrieve().body(JsonNode.class);
+                JsonNode response = externalApiRestClient.get().uri(url).retrieve().body(JsonNode.class);
+                // Giãn cách 150ms sau mỗi request thành công để tránh chạm hạn mức rate limit
+                // (10 req/s) của OpenAlex
+                sleepQuietly(150L);
+                return response;
+            } catch (HttpClientErrorException.TooManyRequests ex) {
+                String responseBody = ex.getResponseBodyAsString();
+                if (responseBody != null && responseBody.contains("Insufficient budget")) {
+                    throw new com.norman.swp391.exception.OpenAlexQuotaExhaustedException(
+                            "OpenAlex quota exhausted. Synchronization stopped. Retry after quota reset.", ex);
+                }
+                long sleepMs = 2000L * attempt; // Back off: 2s, 4s, 6s...
+                if (ex.getResponseHeaders() != null) {
+                    String retryAfter = ex.getResponseHeaders().getFirst("Retry-After");
+                    if (StringUtils.hasText(retryAfter)) {
+                        try {
+                            sleepMs = Math.max(1, Long.parseLong(retryAfter.trim())) * 1000L;
+                        } catch (NumberFormatException nfe) {
+                            // ignore, fallback
+                        }
+                    }
+                }
+                if (attempt >= attempts) {
+                    log.warn("OpenAlex rate limit hit, exhausted all {} attempts for URL: {}", attempts, url, ex);
+                    return null;
+                }
+                log.warn("OpenAlex rate limit hit (429), retrying attempt {}/{} after sleeping {} ms...", attempt + 1,
+                        attempts, sleepMs);
+                sleepQuietly(sleepMs);
             } catch (Exception ex) {
                 if (attempt >= attempts) {
                     log.warn("OpenAlex request failed after {} attempts: {}", attempts, url, ex);
                     return null;
                 }
                 log.debug("OpenAlex retry {}/{} for {}", attempt, attempts, url);
-                sleepQuietly(250L * attempt);
+                sleepQuietly(500L * attempt);
             }
         }
         return null;
@@ -359,6 +391,12 @@ public class OpenAlexClient {
     private void appendMailto(UriComponentsBuilder builder) {
         if (StringUtils.hasText(appProperties.getOpenalex().getMailto())) {
             builder.queryParam("mailto", appProperties.getOpenalex().getMailto());
+        }
+    }
+
+    private void appendApiKey(UriComponentsBuilder builder) {
+        if (StringUtils.hasText(appProperties.getOpenalex().getApiKey())) {
+            builder.queryParam("api_key", appProperties.getOpenalex().getApiKey());
         }
     }
 
