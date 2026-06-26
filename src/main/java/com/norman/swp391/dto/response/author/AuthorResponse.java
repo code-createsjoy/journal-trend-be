@@ -20,6 +20,9 @@ public class AuthorResponse {
     private int citationCount;
     private String sourceType;
     private String sourceIdentifier;
+
+    private Integer papers;
+    private Integer hIndex;
 }
 
 

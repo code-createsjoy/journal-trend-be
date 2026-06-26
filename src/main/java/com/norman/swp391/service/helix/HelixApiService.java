@@ -147,7 +147,6 @@ public class HelixApiService {
                 Math.max(paperCount, 1),
                 citations,
                 estimateHIndex(citations),
-                round(Math.min(99, Math.log10(citations + 1) * 22)),
                 author.getSourceIdentifier(),
                 author.getSourceType() != null ? author.getSourceType() : "Local DB");
     }
@@ -162,8 +161,7 @@ public class HelixApiService {
                         a.getAffiliation() != null ? a.getAffiliation() : "",
                         (int) paperAuthorRepository.countByAuthorId(a.getId()),
                         a.getCitationCount(),
-                        estimateHIndex(a.getCitationCount()),
-                        round(Math.min(99, Math.log10(a.getCitationCount() + 1) * 22))))
+                        estimateHIndex(a.getCitationCount())))
                 .toList();
     }
 
@@ -205,8 +203,7 @@ public class HelixApiService {
                         a.getAffiliation() != null ? a.getAffiliation() : "",
                         (int) paperAuthorRepository.countByAuthorId(a.getId()),
                         a.getCitationCount(),
-                        estimateHIndex(a.getCitationCount()),
-                        round(Math.min(99, Math.log10(a.getCitationCount() + 1) * 22))))
+                        estimateHIndex(a.getCitationCount())))
                 .toList();
 
         return PageResponse.from(authorPage, helixAuthors);
@@ -339,8 +336,7 @@ public class HelixApiService {
                         a.getAffiliation() != null ? a.getAffiliation() : "",
                         (int) paperAuthorRepository.countByAuthorId(a.getId()),
                         a.getCitationCount(),
-                        estimateHIndex(a.getCitationCount()),
-                        round(Math.min(99, a.getCitationCount() / 10.0))))
+                        estimateHIndex(a.getCitationCount())))
                 .toList();
 
         List<HelixTopicTrend> helixTopics = topicTrends.stream()
