@@ -148,6 +148,19 @@ public class OpenAlexClient {
                 ? work.path("open_access").path("is_oa").asBoolean()
                 : null;
         String journal = textOrNull(work.path("primary_location").path("source").path("display_name"));
+
+        // Parse referenced_works (list of OpenAlex work URLs/IDs)
+        List<String> referencedWorkIds = new ArrayList<>();
+        JsonNode refsNode = work.path("referenced_works");
+        if (refsNode.isArray()) {
+            for (JsonNode ref : refsNode) {
+                String refId = toOpenAlexWorkId(ref.asText(null));
+                if (StringUtils.hasText(refId)) {
+                    referencedWorkIds.add(refId);
+                }
+            }
+        }
+
         return new ExternalPaperMetadata(
                 title,
                 abstractText,
@@ -162,7 +175,8 @@ public class OpenAlexClient {
                 journal,
                 "OPENALEX",
                 openAlexId,
-                authorDetails);
+                authorDetails,
+                referencedWorkIds);
     }
 
     /**
@@ -486,5 +500,135 @@ public class OpenAlexClient {
      */
     private String stripHtml(String value) {
         return value == null ? null : value.replaceAll("<[^>]*>", "").trim();
+    }
+
+    /**
+     * Batch fetch metadata cho nhiều works theo OpenAlex IDs.
+     * Sử dụng filter pipe: openalex_id:W1|W2|W3 (tối đa ~50 IDs/request).
+     */
+    public List<ExternalPaperMetadata> fetchWorksByIds(List<String> openAlexIds) {
+        if (openAlexIds == null || openAlexIds.isEmpty()) {
+            return List.of();
+        }
+        List<ExternalPaperMetadata> allResults = new ArrayList<>();
+        // OpenAlex giới hạn ~50 IDs per pipe filter
+        int batchSize = 50;
+        for (int i = 0; i < openAlexIds.size(); i += batchSize) {
+            List<String> batch = openAlexIds.subList(i, Math.min(i + batchSize, openAlexIds.size()));
+            String pipeFilter = String.join("|", batch);
+            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                    appProperties.getOpenalex().getBaseUrl() + "/works")
+                    .queryParam("filter", "openalex_id:" + pipeFilter)
+                    .queryParam("per_page", batch.size())
+                    .queryParam("select", "id,title,publication_year,publication_date,doi,cited_by_count");
+            appendMailto(builder);
+            appendApiKey(builder);
+            JsonNode root = fetchJsonSafe(builder.toUriString());
+            if (root != null && root.has("results") && root.path("results").isArray()) {
+                for (JsonNode work : root.path("results")) {
+                    String id = toOpenAlexWorkId(textOrNull(work.path("id")));
+                    String title = textOrNull(work.path("title"));
+                    String doi = normalizeDoi(textOrNull(work.path("doi")));
+                    LocalDate pubDate = resolvePublicationDate(work);
+                    Integer citations = work.path("cited_by_count").isInt()
+                            ? work.path("cited_by_count").asInt() : null;
+                    allResults.add(new ExternalPaperMetadata(
+                            title, null, doi, pubDate, citations,
+                            List.of(), List.of(), null, null, null, null,
+                            "OPENALEX", id));
+                }
+            }
+        }
+        return allResults;
+    }
+
+    /**
+     * Lấy danh sách referenced_works IDs cho một work cụ thể.
+     * Trả về list OpenAlex IDs (e.g. ["W123", "W456"]).
+     */
+    public List<String> extractReferencedWorkIds(String openAlexId) {
+        if (!StringUtils.hasText(openAlexId)) {
+            return List.of();
+        }
+        String url = appProperties.getOpenalex().getBaseUrl() + "/works/" + openAlexId;
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url)
+                .queryParam("select", "id,referenced_works");
+        appendMailto(builder);
+        appendApiKey(builder);
+        JsonNode node = fetchJsonSafe(builder.toUriString());
+        if (node == null || node.isMissingNode()) {
+            return List.of();
+        }
+        List<String> refs = new ArrayList<>();
+        JsonNode refsNode = node.path("referenced_works");
+        if (refsNode.isArray()) {
+            for (JsonNode ref : refsNode) {
+                String refId = toOpenAlexWorkId(ref.asText(null));
+                if (StringUtils.hasText(refId)) {
+                    refs.add(refId);
+                }
+            }
+        }
+        return refs;
+    }
+
+    /**
+     * Lấy danh sách papers trích dẫn (citing) một work cụ thể.
+     * Sử dụng OpenAlex filter: cites:W...
+     *
+     * @param openAlexId   OpenAlex ID của paper gốc (e.g. "W2741809807")
+     * @param sort         "cited_by_count:desc" hoặc "publication_date:desc"
+     * @param yearFrom     Năm bắt đầu (nullable)
+     * @param yearTo       Năm kết thúc (nullable)
+     * @param perPage      Số lượng kết quả tối đa (default 20)
+     * @return Danh sách ExternalPaperMetadata nhẹ (chỉ title, year, doi, citationCount)
+     */
+    public List<ExternalPaperMetadata> fetchCitingWorks(String openAlexId, String sort,
+                                                        Integer yearFrom, Integer yearTo, int perPage) {
+        if (!StringUtils.hasText(openAlexId)) {
+            return List.of();
+        }
+        StringBuilder filterStr = new StringBuilder("cites:" + openAlexId);
+        if (yearFrom != null) {
+            filterStr.append(",from_publication_date:").append(yearFrom).append("-01-01");
+        }
+        if (yearTo != null) {
+            filterStr.append(",to_publication_date:").append(yearTo).append("-12-31");
+        }
+
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                appProperties.getOpenalex().getBaseUrl() + "/works")
+                .queryParam("filter", filterStr.toString())
+                .queryParam("per_page", Math.min(perPage, 200))
+                .queryParam("select", "id,title,publication_year,publication_date,doi,cited_by_count");
+
+        if (StringUtils.hasText(sort)) {
+            builder.queryParam("sort", sort);
+        } else {
+            builder.queryParam("sort", "cited_by_count:desc");
+        }
+
+        appendMailto(builder);
+        appendApiKey(builder);
+
+        JsonNode root = fetchJsonSafe(builder.toUriString());
+        if (root == null || !root.has("results") || !root.path("results").isArray()) {
+            return List.of();
+        }
+
+        List<ExternalPaperMetadata> results = new ArrayList<>();
+        for (JsonNode work : root.path("results")) {
+            String id = toOpenAlexWorkId(textOrNull(work.path("id")));
+            String title = textOrNull(work.path("title"));
+            String doi = normalizeDoi(textOrNull(work.path("doi")));
+            LocalDate pubDate = resolvePublicationDate(work);
+            Integer citations = work.path("cited_by_count").isInt()
+                    ? work.path("cited_by_count").asInt() : null;
+            results.add(new ExternalPaperMetadata(
+                    title, null, doi, pubDate, citations,
+                    List.of(), List.of(), null, null, null, null,
+                    "OPENALEX", id));
+        }
+        return results;
     }
 }

@@ -131,7 +131,6 @@ public class DataInitializer implements CommandLineRunner {
  */
     private void seedApiSources() {
         seedSource("OpenAlex", appProperties.getOpenalex().getBaseUrl(), appProperties.getSync().getCron());
-        seedSource("SemanticScholar", appProperties.getSemanticScholar().getBaseUrl(), null);
     }
 
 /**
