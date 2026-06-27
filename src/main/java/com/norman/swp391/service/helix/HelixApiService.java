@@ -94,16 +94,13 @@ public class HelixApiService {
         Page<Paper> page;
         if (keywordId != null) {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, keywordId, null, null, null, null, null, null,
-                    pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, keywordId, null, null, null, null, null, null, pageable);
         } else if (query == null) {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, null, null, null, null, null, null, null, null,
-                    pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, null, null, null, null, null, null, null, null, null, pageable);
         } else {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, null, null, null, null, null, null,
-                    pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, null, null, null, null, null, null, null, pageable);
         }
         List<Paper> paperEntities = page.getContent();
         List<Long> paperIds = paperEntities.stream().map(Paper::getId).toList();
@@ -273,8 +270,6 @@ public class HelixApiService {
     @Transactional(readOnly = true)
     public List<HelixPaper> listPapersByTopic(String topicId, Integer limit) {
         int pageSize = limit != null && limit > 0 ? Math.min(limit, 100) : 50;
-
-        // Resolve domain name from topicId hash
         long hash = Long.parseLong(topicId);
         Optional<Keyword> kwOpt = keywordRepository.findById(hash);
         List<Paper> paperEntities;
@@ -283,6 +278,7 @@ public class HelixApiService {
                     PaperStatus.ACTIVE,
                     PaperReviewStatus.NONE,
                     null,
+                    null,
                     hash,
                     null,
                     null,
@@ -290,7 +286,8 @@ public class HelixApiService {
                     null,
                     null,
                     null,
-                    PageRequest.of(0, pageSize)).getContent();
+                    PageRequest.of(0, pageSize)
+            ).getContent();
         } else {
             String domain = keywordTrendService.findTrendingTopics().stream()
                     .filter(t -> t.getTopicId() == hash)
