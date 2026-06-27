@@ -35,6 +35,9 @@ public interface CollectionPaperRepository extends JpaRepository<CollectionPaper
         """)
     long countDistinctPapersByUserId(@Param("userId") Long userId);
 
+    @Query("SELECT cp.paper.id FROM CollectionPaper cp WHERE cp.collection.user.id = :userId")
+    List<Long> findPaperIdsByUserId(@Param("userId") Long userId);
+
     /**
      * Top bài được lưu nhiều nhất (paperId, count).
      */
