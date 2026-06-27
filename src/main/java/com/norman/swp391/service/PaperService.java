@@ -14,7 +14,7 @@ public interface PaperService {
 /**
  * Tìm kiếm/lọc: search.
  */
-    PageResponse<PaperDetailResponse> search(String q, Long topicId, Long authorId, Integer fromYear, Integer toYear, String category, Integer minCitations, Long journalId, Pageable pageable);
+    PageResponse<PaperDetailResponse> search(String q, String searchType, Long topicId, Long authorId, Integer fromYear, Integer toYear, String category, Integer minCitations, Long journalId, Pageable pageable);
 
     List<Integer> getAvailableYears();
 
