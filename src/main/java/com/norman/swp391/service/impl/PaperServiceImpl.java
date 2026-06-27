@@ -131,6 +131,29 @@ public class PaperServiceImpl implements PaperService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<PaperDetailResponse> getByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Paper> papers = paperRepository.findAllById(ids).stream()
+                .filter(p -> p.getStatus() == PaperStatus.ACTIVE && p.getReviewStatus() == PaperReviewStatus.NONE)
+                .toList();
+        if (papers.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Long> paperIds = papers.stream().map(Paper::getId).toList();
+        Map<Long, List<Author>> authorsByPaperId = loadAuthorsForPapers(paperIds);
+        Map<Long, List<Keyword>> keywordsByPaperId = loadKeywordsForPapers(paperIds);
+        
+        return papers.stream().map(p -> 
+            PaperMapper.toDetailResponse(p, 
+                keywordsByPaperId.getOrDefault(p.getId(), Collections.emptyList()), 
+                authorsByPaperId.getOrDefault(p.getId(), Collections.emptyList()))
+        ).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<Integer> getAvailableYears() {
         return paperRepository.findAllPublicationDates(PaperStatus.ACTIVE)
                 .stream()
