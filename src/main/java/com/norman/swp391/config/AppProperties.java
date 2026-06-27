@@ -32,10 +32,7 @@ public class AppProperties {
      * Thực hiện OpenAlex.
      */
     private OpenAlex openalex = new OpenAlex();
-    /**
-     * Thực hiện SemanticScholar.
-     */
-    private SemanticScholar semanticScholar = new SemanticScholar();
+
     /**
      * Thực hiện Sync.
      */
@@ -65,15 +62,7 @@ public class AppProperties {
         private String apiKey;
     }
 
-    @Getter
-    @Setter
-    /**
-     * Cấu hình S2.
-     */
-    public static class SemanticScholar {
-        private String baseUrl = "https://api.semanticscholar.org/graph/v1";
-        private String apiKey;
-    }
+
 
     @Getter
     @Setter
@@ -105,15 +94,11 @@ public class AppProperties {
         private int enrichBatchSize = 20;
         /** Pause between enrich HTTP calls (ms). */
         private int enrichDelayMs = 50;
-        /** Call Semantic Scholar during sync (slow; off by default). */
-        private boolean semanticScholarOnSync = false;
-        /** Semantic Scholar enrichment on new ingest (very slow). */
-        private boolean externalEnrichOnIngest = false;
         /** Mark RUNNING syncs as failed after this many minutes. */
         private int staleSyncMinutes = 10;
-        /** HTTP connect timeout for OpenAlex / Semantic Scholar (ms). */
+        /** HTTP connect timeout for OpenAlex (ms). */
         private int httpConnectTimeoutMs = 10_000;
-        /** HTTP read timeout for OpenAlex / Semantic Scholar (ms). */
+        /** HTTP read timeout for OpenAlex (ms). */
         private int httpReadTimeoutMs = 30_000;
         /** Retries per OpenAlex HTTP call (transient failures). */
         private int openAlexRetryAttempts = 3;

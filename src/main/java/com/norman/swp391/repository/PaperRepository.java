@@ -34,6 +34,15 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
 
     boolean existsBySourceTypeAndSourceIdentifier(String sourceType, String sourceIdentifier);
 
+    /**
+     * Batch lookup papers theo sourceType và danh sách sourceIdentifier.
+     * Dùng cho references graph cross-reference.
+     */
+    @Query("SELECT p FROM Paper p WHERE p.sourceType = :sourceType AND p.sourceIdentifier IN :ids")
+    List<Paper> findBySourceTypeAndSourceIdentifierIn(
+            @Param("sourceType") String sourceType,
+            @Param("ids") List<String> ids);
+
     @Query("SELECT p.doi FROM Paper p WHERE p.doi IN :dois")
     List<String> findExistingDois(@Param("dois") List<String> dois);
 

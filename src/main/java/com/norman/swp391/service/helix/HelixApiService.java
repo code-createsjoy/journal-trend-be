@@ -798,7 +798,7 @@ public class HelixApiService {
         }
         return switch (source.toLowerCase()) {
             case "crossref" -> "CrossRef";
-            case "semantic scholar", "semanticscholar", "s2" -> "Semantic Scholar";
+            case "semantic scholar", "semanticscholar", "s2" -> "Semantic Scholar"; // Legacy compatibility for existing database records
             default -> "OpenAlex";
         };
     }

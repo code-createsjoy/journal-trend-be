@@ -61,9 +61,6 @@ app:
     mailto: ${OPENALEX_MAILTO:quocthaiarct2005@gmail.com}
     per-page: ${OPENALEX_PER_PAGE:200}
     api-key: ${OPENALEX_API_KEY:r2ywilzU3nvjc7e8VVrELN}
-  semantic-scholar:
-    base-url: https://api.semanticscholar.org/graph/v1
-    api-key: ${SEMANTIC_SCHOLAR_API_KEY:}
   sync:
     cron: ${SYNC_CRON:0 0 2 * * *}
     on-startup: ${SYNC_ON_STARTUP:false}
@@ -77,8 +74,6 @@ app:
     enrich-on-sync: ${SYNC_ENRICH_ON_SYNC:false}
     enrich-batch-size: ${SYNC_ENRICH_BATCH_SIZE:20}
     enrich-delay-ms: ${SYNC_ENRICH_DELAY_MS:50}
-    semantic-scholar-on-sync: ${SYNC_SEMANTIC_SCHOLAR_ON_SYNC:false}
-    external-enrich-on-ingest: false
     stale-sync-minutes: ${SYNC_STALE_MINUTES:60}
     http-connect-timeout-ms: ${SYNC_HTTP_CONNECT_TIMEOUT_MS:10000}
     http-read-timeout-ms: ${SYNC_HTTP_READ_TIMEOUT_MS:30000}

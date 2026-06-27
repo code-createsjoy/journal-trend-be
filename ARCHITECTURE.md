@@ -23,7 +23,7 @@ The source code (`src/main/java/com/norman/swp391`) is logically grouped by tech
 - **`dto/`**: Data Transfer Objects used to receive requests and send responses. Also divided into standard DTOs and `helix` DTOs.
 - **`entity/`**: JPA Domain models mapping directly to the database. Includes the `enums/` package (`UserRole`, `PaperStatus`, etc.).
 - **`exception/`**: Centralized error handling (`GlobalExceptionHandler`) to translate backend exceptions into standardized HTTP error responses.
-- **`integration/`**: External API clients. Currently implements `openalex` and `semanticscholar` clients.
+- **`integration/`**: External API clients. Currently implements the `openalex` client.
 - **`mapper/`**: Classes responsible for mapping data between `entity` models and `dto` models.
 - **`repository/`**: Interfaces extending `JpaRepository` for data access.
 - **`scheduler/`**: Cron jobs and background tasks (`DataSyncScheduler`, `PaperReviewMaintenanceScheduler`).
@@ -44,7 +44,7 @@ The source code (`src/main/java/com/norman/swp391`) is logically grouped by tech
 ### 3.2 Data Synchronization Engine (`scheduler`, `integration`, `service`)
 - **Trigger:** `DataSyncScheduler` runs periodically or `AdminController` triggers sync manually.
 - **Execution:** It delegates to `PaperSyncService`.
-- **Integration:** The service utilizes `OpenAlexClient` and `SemanticScholarClient` to fetch metadata.
+- **Integration:** The service utilizes `OpenAlexClient` to fetch metadata.
 - **Persistence:** Fetched data is transformed, deduplicated (using DOIs), and saved to the local database. Sync operations are logged via `SyncLog`.
 
 ### 3.3 Trend Analytics Engine
@@ -54,12 +54,12 @@ The source code (`src/main/java/com/norman/swp391`) is logically grouped by tech
 
 ## 4. Third-Party Integrations
 - **Database:** Microsoft SQL Server (via JDBC Driver).
-- **External APIs:** OpenAlex, Semantic Scholar (integrated via Spring REST clients configured in `RestClientConfig`). Note: Crossref is a potential future source but currently unimplemented.
+- **External APIs:** OpenAlex (integrated via Spring REST clients configured in `RestClientConfig`). Note: Crossref is a potential future source but currently unimplemented.
 - **Email Delivery:** SMTP (via Spring Mail) for sending email verifications and password resets.
 - **Documentation:** SpringDoc OpenAPI configured via `OpenApiConfig`.
 
 ## 5. Scalability & Performance Considerations
 - **Stateless APIs:** Ensures the backend can be horizontally scaled.
-- **Batch Processing:** Data ingestion uses batch processing via OpenAlex/Semantic Scholar pagination to prevent memory exhaustion.
+- **Data ingestion:** Data ingestion uses batch processing via OpenAlex pagination to prevent memory exhaustion.
 - **Asynchronous Execution:** Handled via `@EnableAsync` (in `AsyncConfig`).
 - **Data Initialization:** `DataInitializer` populates default users/configurations safely on startup.

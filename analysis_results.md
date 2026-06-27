@@ -2,7 +2,7 @@
 
 ## 1. Tổng Quan Kiến Trúc
 
-Hệ thống sync paper thu thập metadata bài báo khoa học từ **2 nguồn API bên ngoài** (OpenAlex & Semantic Scholar), lưu vào database SQL Server, và tự động tính toán xu hướng keyword.
+Hệ thống sync paper thu thập metadata bài báo khoa học từ **OpenAlex**, lưu vào database SQL Server, và tự động tính toán xu hướng keyword.
 
 ```mermaid
 graph TD
@@ -12,9 +12,7 @@ graph TD
     B2 -->|Virtual Thread| C["executeSync()"]
     C -->|"Load 1 lần"| PRE["DOI Pre-Filter Set"]
     C -->|Fetch| D["OpenAlexClient"]
-    C -->|Fetch| E["SemanticScholarClient"]
     D -->|ExternalPaperMetadata| FILTER["Pre-Filter Check"]
-    E -->|ExternalPaperMetadata| FILTER
     FILTER -->|"Paper mới"| F["flushIngest()"]
     FILTER -->|"Đã có → skip"| SKIP["Tăng consecutiveEmptyPages"]
     F -->|Batch Save| G["Database"]
@@ -57,7 +55,7 @@ graph TD
    ├── ★ Load DOI Pre-Filter Sets (1 lần):
    │   ├── knownDois      = paperRepository.findAllDois()
    │   └── knownSourceIds = paperRepository.findAllSourceIdentifiers()
-   ├── Loop qua từng query × từng source:
+   ├── Loop qua từng query:
    │   ├── ★ Check shutdownRequested → dừng gracefully nếu app shutdown
    │   ├── Load/Create KeywordSyncState (resume support)
    │   ├── Skip nếu COMPLETED
@@ -148,10 +146,9 @@ Theo dõi tiến trình crawl cho mỗi cặp `(keyword, sourceType)`. Cho phép
 - JPA batch config: `batch_size: 50`, `order_inserts: true`, `order_updates: true`.
 - **Author lookup**: Bulk fetch bằng `findByNameInIgnoreCase()` (1 query) + in-memory affiliation matching, thay vì N individual queries.
 
-### 5.3. Multi-Source Support
-- Hỗ trợ song song OpenAlex và Semantic Scholar.
-- Admin có thể enable/disable từng source riêng lẻ.
-- Rate limiting handling cho Semantic Scholar (429 → skip, tiếp tục source khác).
+### 5.3. OpenAlex Source Support
+- Đồng bộ dữ liệu tập trung từ OpenAlex.
+- Admin có thể enable/disable API source OpenAlex trong config.
 
 ### 5.4. Observability (Khả Năng Quan Sát)
 - SyncLog ghi chi tiết metrics: `apiCalls`, `pagesFetched`, `papersInserted`, `papersSkipped`, `earlyStopTriggered`.

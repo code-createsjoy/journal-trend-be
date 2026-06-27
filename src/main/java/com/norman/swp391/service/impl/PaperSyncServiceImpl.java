@@ -7,6 +7,7 @@ import com.norman.swp391.entity.KeywordSyncState;
 import com.norman.swp391.entity.Paper;
 import com.norman.swp391.entity.PaperAuthor;
 import com.norman.swp391.entity.PaperKeyword;
+import com.norman.swp391.entity.PaperReference;
 import com.norman.swp391.entity.SyncLog;
 import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.Journal;
@@ -19,7 +20,6 @@ import com.norman.swp391.integration.model.ExternalAuthorInfo;
 import com.norman.swp391.integration.model.ExternalKeywordInfo;
 import com.norman.swp391.integration.model.ExternalPaperMetadata;
 import com.norman.swp391.integration.openalex.OpenAlexClient;
-import com.norman.swp391.integration.semanticscholar.SemanticScholarClient;
 import com.norman.swp391.mapper.SyncLogMapper;
 import com.norman.swp391.repository.AuthorRepository;
 import com.norman.swp391.repository.JournalRepository;
@@ -27,6 +27,7 @@ import com.norman.swp391.repository.KeywordSyncStateRepository;
 import com.norman.swp391.repository.PaperAuthorRepository;
 import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.PaperKeywordRepository;
+import com.norman.swp391.repository.PaperReferenceRepository;
 import com.norman.swp391.repository.SyncLogRepository;
 import com.norman.swp391.repository.KeywordRepository;
 import com.norman.swp391.repository.UserRepository;
@@ -50,6 +51,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
@@ -64,10 +66,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
     private final AppProperties appProperties;
     private final OpenAlexClient openAlexClient;
-    private final SemanticScholarClient semanticScholarClient;
     private final PaperRepository paperRepository;
     private final KeywordRepository keywordRepository;
     private final PaperKeywordRepository paperKeywordRepository;
+    private final PaperReferenceRepository paperReferenceRepository;
     private final AuthorRepository authorRepository;
     private final PaperAuthorRepository paperAuthorRepository;
     private final SyncLogRepository syncLogRepository;
@@ -169,7 +171,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         // [Fix #6] Gộp biến — chỉ dùng totalPapersInserted cho cả limit check
         Set<Long> newPaperIds = new HashSet<>();
         boolean openAlexEnabled = false;
-        boolean semanticScholarEnabled = false;
 
         // Metrics Tracking
         int totalApiCalls = 0;
@@ -181,9 +182,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
         try {
             openAlexEnabled = apiSourceService.isEnabled("OpenAlex");
-            semanticScholarEnabled = apiSourceService.isEnabled("SemanticScholar");
-            if (!openAlexEnabled && !semanticScholarEnabled) {
-                throw new IllegalStateException("Both OpenAlex and SemanticScholar sources are disabled in admin config");
+            if (!openAlexEnabled) {
+                throw new IllegalStateException("OpenAlex source is disabled in admin config");
             }
 
             List<String> queries = appProperties.getSync().getSearchQueries();
@@ -204,17 +204,12 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             if (openAlexEnabled) {
                 enabledSources.add("OpenAlex");
             }
-            if (semanticScholarEnabled) {
-                enabledSources.add("SemanticScholar");
-            }
 
             // [Fix #8] DOI Pre-Filter — load known identifiers ONCE at sync start
             Set<String> knownDois = new HashSet<>(paperRepository.findAllDois());
             Set<String> knownSourceIds = new HashSet<>(paperRepository.findAllSourceIdentifiers());
             log.info("[SYNC] Loaded {} known DOIs + {} known source IDs for pre-filtering",
                     knownDois.size(), knownSourceIds.size());
-
-            boolean semanticScholarRateLimited = false;
 
             // [Fix #4] Early stopping config
             boolean earlyStoppingEnabled = appProperties.getSync().isEarlyStoppingEnabled();
@@ -228,10 +223,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 String trimmedQuery = query.trim();
 
                 for (String source : enabledSources) {
-                    if ("SemanticScholar".equals(source) && semanticScholarRateLimited) {
-                        continue;
-                    }
-
                     String sourceTypeKey = source.toUpperCase().replace(" ", "");
 
                     // --- Resume Support: Load or create KeywordSyncState ---
@@ -289,16 +280,12 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                             if ("OpenAlex".equals(source)) {
                                 batch = openAlexClient.fetchWorks(trimmedQuery, page, fromDate);
                             } else {
-                                batch = semanticScholarClient.fetchWorks(trimmedQuery, page);
+                                batch = List.of();
                             }
                         } catch (com.norman.swp391.exception.OpenAlexQuotaExhaustedException ex) {
                             log.error("[SYNC] Keyword={} OpenAlex quota exhausted at page {}. Will resume next run.",
                                     trimmedQuery, page);
                             throw ex;
-                        } catch (org.springframework.web.client.HttpClientErrorException.TooManyRequests ex) {
-                            log.error("[SYNC] Keyword={} Semantic Scholar rate limit at page {}.", trimmedQuery, page);
-                            semanticScholarRateLimited = true;
-                            break;
                         } catch (Exception ex) {
                             log.warn("[SYNC] Keyword={} {} fetch failed page {}: {}", trimmedQuery, source, page, ex.getMessage());
                             continue;
@@ -332,18 +319,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                         for (ExternalPaperMetadata metadata : batch) {
                             if (totalPapersInserted >= maxPapers) {
                                 break outer;
-                            }
-
-                            // For Semantic Scholar, filter by publication date manually
-                            if ("SemanticScholar".equals(source) && StringUtils.hasText(fromDate)) {
-                                try {
-                                    LocalDate limitDate = LocalDate.parse(fromDate);
-                                    if (metadata.publicationDate() != null && metadata.publicationDate().isBefore(limitDate)) {
-                                        continue;
-                                    }
-                                } catch (Exception ex) {
-                                    // ignore date parse errors
-                                }
                             }
 
                             // [Fix #8] DOI pre-filter — skip already known papers
@@ -441,9 +416,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             if (openAlexEnabled) {
                 apiSourceService.recordSyncResult("OpenAlex", true);
             }
-            if (semanticScholarEnabled) {
-                apiSourceService.recordSyncResult("SemanticScholar", true);
-            }
             log.info("[SYNC] Run #{} completed: {} papers inserted total", syncLogId, totalPapersInserted);
         } catch (Exception ex) {
             log.error("[SYNC] Run #{} failed", syncLogId, ex);
@@ -455,9 +427,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             sync.setErrorMessage(ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName());
             if (openAlexEnabled) {
                 apiSourceService.recordSyncResult("OpenAlex", false);
-            }
-            if (semanticScholarEnabled) {
-                apiSourceService.recordSyncResult("SemanticScholar", false);
             }
         } finally {
             syncThread = null; // [Fix #2] Clear thread reference
@@ -870,6 +839,47 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             }
             if (!paperAuthorsToSave.isEmpty()) {
                 paperAuthorRepository.saveAll(paperAuthorsToSave);
+            }
+
+            // 6. Bulk insert PaperReference rows (referenced_works from OpenAlex)
+            List<PaperReference> refsToSave = new ArrayList<>();
+            LocalDateTime refFetchedAt = LocalDateTime.now();
+            for (Map.Entry<ExternalPaperMetadata, Paper> entry : metaToPaperMap.entrySet()) {
+                ExternalPaperMetadata meta = entry.getKey();
+                Paper p = entry.getValue();
+                if (p.getId() == null || meta.referencedWorkIds() == null || meta.referencedWorkIds().isEmpty()) {
+                    continue;
+                }
+                // Chỉ insert cho papers mới (tránh duplicate khi update)
+                if (!newPapersSet.contains(p)) {
+                    continue;
+                }
+                // Deduplicate references to prevent unique constraint violation
+                List<String> uniqueRefs = meta.referencedWorkIds().stream()
+                        .filter(StringUtils::hasText)
+                        .map(String::trim)
+                        .distinct()
+                        .toList();
+
+                for (String refId : uniqueRefs) {
+                    refsToSave.add(PaperReference.builder()
+                            .paperId(p.getId())
+                            .referencedOpenAlexId(refId)
+                            .fetchedAt(refFetchedAt)
+                            .build());
+                }
+            }
+            if (!refsToSave.isEmpty()) {
+                try {
+                    TransactionTemplate requiresNew = new TransactionTemplate(transactionTemplate.getTransactionManager());
+                    requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                    requiresNew.executeWithoutResult(innerStatus -> {
+                        paperReferenceRepository.saveAll(refsToSave);
+                    });
+                    log.debug("[SYNC] Saved {} paper references", refsToSave.size());
+                } catch (Exception ex) {
+                    log.warn("[SYNC] Error saving bulk paper references in REQUIRES_NEW: {}", ex.getMessage());
+                }
             }
 
             // Return how many NEW papers were added to newPaperIds
