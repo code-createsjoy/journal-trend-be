@@ -46,6 +46,14 @@ public class PaperController {
     }
 
     /**
+     * Xử lý API getByIds.
+     */
+    @GetMapping("/bulk")
+    public ApiResponse<java.util.List<PaperDetailResponse>> getByIds(@RequestParam java.util.List<Long> ids) {
+        return ApiResponse.ok(paperService.getByIds(ids));
+    }
+
+    /**
      * Lấy bài báo theo domain của keyword (topic drill-down).
      */
     @GetMapping("/by-domain")

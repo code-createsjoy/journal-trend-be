@@ -27,4 +27,6 @@ public interface PaperService {
  * Lấy dữ liệu: getById.
  */
     PaperDetailResponse getById(Long id);
+
+    java.util.List<PaperDetailResponse> getByIds(java.util.List<Long> ids);
 }
