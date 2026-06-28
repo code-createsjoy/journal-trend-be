@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -40,20 +41,22 @@ public class OpenAlexClient {
      */
     public List<ExternalPaperMetadata> fetchWorks(String search, int page, String fromPublicationDate) {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
-                        appProperties.getOpenalex().getBaseUrl() + "/works")
+                appProperties.getOpenalex().getBaseUrl() + "/works")
                 .queryParam("search", search)
                 .queryParam("page", page)
                 .queryParam("per_page", appProperties.getOpenalex().getPerPage());
-                
+
         // TODO: Bỏ comment dòng bên dưới sau khi đã lấy đủ dữ liệu các tháng cũ
-        // để hệ thống quay lại ưu tiên lấy các bài báo mới nhất (đề phòng OpenAlex bị quá tải).
-        // builder.queryParam("sort", "publication_date:desc");
+        // để hệ thống quay lại ưu tiên lấy các bài báo mới nhất (đề phòng OpenAlex bị
+        // quá tải).
+        // builder.queryParam("sort", "publication_date:asc");
         String filterStr = "has_doi:true,has_abstract:true";
         if (StringUtils.hasText(fromPublicationDate)) {
             filterStr += ",from_publication_date:" + fromPublicationDate;
         }
         builder.queryParam("filter", filterStr);
         appendMailto(builder);
+        appendApiKey(builder);
         JsonNode root = getJson(builder.toUriString());
         List<ExternalPaperMetadata> results = new ArrayList<>();
         for (JsonNode work : root.path("results")) {
@@ -72,6 +75,7 @@ public class OpenAlexClient {
         String url = buildWorkLookupUrl(idOrDoi.trim());
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url);
         appendMailto(builder);
+        appendApiKey(builder);
         JsonNode node = fetchJsonSafe(builder.toUriString());
         if (node == null || node.isMissingNode()) {
             return Optional.empty();
@@ -106,6 +110,7 @@ public class OpenAlexClient {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
                 appProperties.getOpenalex().getBaseUrl() + "/authors/" + normalized);
         appendMailto(builder);
+        appendApiKey(builder);
         JsonNode node = fetchJsonSafe(builder.toUriString());
         if (node == null || node.isMissingNode()) {
             return Optional.empty();
@@ -113,9 +118,9 @@ public class OpenAlexClient {
         return Optional.of(mapAuthorProfile(node));
     }
 
-/**
- * Chuyển đổi entity sang DTO: mapWork.
- */
+    /**
+     * Chuyển đổi entity sang DTO: mapWork.
+     */
     private ExternalPaperMetadata mapWork(JsonNode work) {
         String openAlexId = toOpenAlexWorkId(textOrNull(work.path("id")));
         String title = textOrNull(work.path("title"));
@@ -128,8 +133,7 @@ public class OpenAlexClient {
         }
         String doi = normalizeDoi(textOrNull(work.path("doi")));
         LocalDate publicationDate = resolvePublicationDate(work);
-        Integer citationCount =
-                work.path("cited_by_count").isInt() ? work.path("cited_by_count").asInt() : null;
+        Integer citationCount = work.path("cited_by_count").isInt() ? work.path("cited_by_count").asInt() : null;
         List<ExternalKeywordInfo> keywords = mapOpenAlexKeywords(
                 work.path("topics"),
                 work.path("concepts"));
@@ -144,6 +148,19 @@ public class OpenAlexClient {
                 ? work.path("open_access").path("is_oa").asBoolean()
                 : null;
         String journal = textOrNull(work.path("primary_location").path("source").path("display_name"));
+
+        // Parse referenced_works (list of OpenAlex work URLs/IDs)
+        List<String> referencedWorkIds = new ArrayList<>();
+        JsonNode refsNode = work.path("referenced_works");
+        if (refsNode.isArray()) {
+            for (JsonNode ref : refsNode) {
+                String refId = toOpenAlexWorkId(ref.asText(null));
+                if (StringUtils.hasText(refId)) {
+                    referencedWorkIds.add(refId);
+                }
+            }
+        }
+
         return new ExternalPaperMetadata(
                 title,
                 abstractText,
@@ -158,12 +175,13 @@ public class OpenAlexClient {
                 journal,
                 "OPENALEX",
                 openAlexId,
-                authorDetails);
+                authorDetails,
+                referencedWorkIds);
     }
 
-/**
- * Xử lý nghiệp vụ: reconstructAbstract.
- */
+    /**
+     * Xử lý nghiệp vụ: reconstructAbstract.
+     */
     private String reconstructAbstract(JsonNode invertedIndex) {
         if (!invertedIndex.isObject()) {
             return null;
@@ -183,9 +201,9 @@ public class OpenAlexClient {
         return String.join(" ", wordsByPosition.values());
     }
 
-/**
- * Chuyển đổi entity sang DTO: mapAuthorProfile.
- */
+    /**
+     * Chuyển đổi entity sang DTO: mapAuthorProfile.
+     */
     private ExternalAuthorProfile mapAuthorProfile(JsonNode author) {
         String openAlexId = toOpenAlexAuthorId(textOrNull(author.path("id")));
         String name = textOrNull(author.path("display_name"));
@@ -202,9 +220,9 @@ public class OpenAlexClient {
         return new ExternalAuthorProfile(openAlexId, name, affiliation, citedByCount, worksCount, hIndex);
     }
 
-/**
- * Xử lý nghiệp vụ: resolvePublicationDate.
- */
+    /**
+     * Xử lý nghiệp vụ: resolvePublicationDate.
+     */
     private LocalDate resolvePublicationDate(JsonNode work) {
         LocalDate publicationDate = parseDate(textOrNull(work.path("publication_date")));
         if (publicationDate != null) {
@@ -223,7 +241,7 @@ public class OpenAlexClient {
         List<ExternalKeywordInfo> keywords = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         String primaryDomain = "General";
-        
+
         if (topicsNode != null && topicsNode.isArray()) {
             List<JsonNode> topicList = StreamSupport.stream(topicsNode.spliterator(), false)
                     .map(JsonNode.class::cast)
@@ -268,7 +286,7 @@ public class OpenAlexClient {
         if ("General".equals(primaryDomain) && StringUtils.hasText(fallbackDomain)) {
             primaryDomain = fallbackDomain;
         }
-        
+
         if (conceptsNode != null && conceptsNode.isArray()) {
             List<JsonNode> conceptList = StreamSupport.stream(conceptsNode.spliterator(), false)
                     .map(JsonNode.class::cast)
@@ -286,9 +304,9 @@ public class OpenAlexClient {
         return keywords;
     }
 
-/**
- * Chuyển đổi entity sang DTO: mapAuthorDetails.
- */
+    /**
+     * Chuyển đổi entity sang DTO: mapAuthorDetails.
+     */
     private List<ExternalAuthorInfo> mapAuthorDetails(JsonNode authorships) {
         if (!authorships.isArray()) {
             return List.of();
@@ -311,9 +329,9 @@ public class OpenAlexClient {
         return authors;
     }
 
-/**
- * Lấy dữ liệu: getJson.
- */
+    /**
+     * Lấy dữ liệu: getJson.
+     */
     private JsonNode getJson(String url) {
         JsonNode node = fetchJsonSafe(url);
         if (node == null || node.isMissingNode()) {
@@ -322,29 +340,57 @@ public class OpenAlexClient {
         return node;
     }
 
-/**
- * Xử lý nghiệp vụ: fetchJsonSafe.
- */
+    /**
+     * Xử lý nghiệp vụ: fetchJsonSafe.
+     */
     private JsonNode fetchJsonSafe(String url) {
         int attempts = Math.max(1, appProperties.getSync().getOpenAlexRetryAttempts());
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
-                return externalApiRestClient.get().uri(url).retrieve().body(JsonNode.class);
+                JsonNode response = externalApiRestClient.get().uri(url).retrieve().body(JsonNode.class);
+                // Giãn cách 150ms sau mỗi request thành công để tránh chạm hạn mức rate limit
+                // (10 req/s) của OpenAlex
+                sleepQuietly(150L);
+                return response;
+            } catch (HttpClientErrorException.TooManyRequests ex) {
+                String responseBody = ex.getResponseBodyAsString();
+                if (responseBody != null && responseBody.contains("Insufficient budget")) {
+                    throw new com.norman.swp391.exception.OpenAlexQuotaExhaustedException(
+                            "OpenAlex quota exhausted. Synchronization stopped. Retry after quota reset.", ex);
+                }
+                long sleepMs = 2000L * attempt; // Back off: 2s, 4s, 6s...
+                if (ex.getResponseHeaders() != null) {
+                    String retryAfter = ex.getResponseHeaders().getFirst("Retry-After");
+                    if (StringUtils.hasText(retryAfter)) {
+                        try {
+                            sleepMs = Math.max(1, Long.parseLong(retryAfter.trim())) * 1000L;
+                        } catch (NumberFormatException nfe) {
+                            // ignore, fallback
+                        }
+                    }
+                }
+                if (attempt >= attempts) {
+                    log.warn("OpenAlex rate limit hit, exhausted all {} attempts for URL: {}", attempts, url, ex);
+                    return null;
+                }
+                log.warn("OpenAlex rate limit hit (429), retrying attempt {}/{} after sleeping {} ms...", attempt + 1,
+                        attempts, sleepMs);
+                sleepQuietly(sleepMs);
             } catch (Exception ex) {
                 if (attempt >= attempts) {
                     log.warn("OpenAlex request failed after {} attempts: {}", attempts, url, ex);
                     return null;
                 }
                 log.debug("OpenAlex retry {}/{} for {}", attempt, attempts, url);
-                sleepQuietly(250L * attempt);
+                sleepQuietly(500L * attempt);
             }
         }
         return null;
     }
 
-/**
- * Xử lý nghiệp vụ: sleepQuietly.
- */
+    /**
+     * Xử lý nghiệp vụ: sleepQuietly.
+     */
     private void sleepQuietly(long ms) {
         try {
             Thread.sleep(ms);
@@ -353,18 +399,24 @@ public class OpenAlexClient {
         }
     }
 
-/**
- * Xử lý nghiệp vụ: appendMailto.
- */
+    /**
+     * Xử lý nghiệp vụ: appendMailto.
+     */
     private void appendMailto(UriComponentsBuilder builder) {
         if (StringUtils.hasText(appProperties.getOpenalex().getMailto())) {
             builder.queryParam("mailto", appProperties.getOpenalex().getMailto());
         }
     }
 
-/**
- * Xử lý nghiệp vụ: normalizeWorkId.
- */
+    private void appendApiKey(UriComponentsBuilder builder) {
+        if (StringUtils.hasText(appProperties.getOpenalex().getApiKey())) {
+            builder.queryParam("api_key", appProperties.getOpenalex().getApiKey());
+        }
+    }
+
+    /**
+     * Xử lý nghiệp vụ: normalizeWorkId.
+     */
     private String normalizeWorkId(String id) {
         if (!StringUtils.hasText(id)) {
             throw new BadRequestException("OpenAlex work id is required");
@@ -372,9 +424,9 @@ public class OpenAlexClient {
         return toOpenAlexWorkId(id);
     }
 
-/**
- * Ánh xạ sang DTO/phản hồi: toOpenAlexWorkId.
- */
+    /**
+     * Ánh xạ sang DTO/phản hồi: toOpenAlexWorkId.
+     */
     private String toOpenAlexWorkId(String id) {
         if (!StringUtils.hasText(id)) {
             return null;
@@ -385,9 +437,9 @@ public class OpenAlexClient {
         return id.startsWith("W") ? id : "W" + id;
     }
 
-/**
- * Xử lý nghiệp vụ: normalizeAuthorId.
- */
+    /**
+     * Xử lý nghiệp vụ: normalizeAuthorId.
+     */
     private String normalizeAuthorId(String id) {
         if (!StringUtils.hasText(id)) {
             throw new BadRequestException("OpenAlex author id is required");
@@ -395,9 +447,9 @@ public class OpenAlexClient {
         return toOpenAlexAuthorId(id);
     }
 
-/**
- * Ánh xạ sang DTO/phản hồi: toOpenAlexAuthorId.
- */
+    /**
+     * Ánh xạ sang DTO/phản hồi: toOpenAlexAuthorId.
+     */
     private String toOpenAlexAuthorId(String id) {
         if (!StringUtils.hasText(id)) {
             return null;
@@ -408,9 +460,9 @@ public class OpenAlexClient {
         return id.startsWith("A") ? id : "A" + id;
     }
 
-/**
- * Xử lý nghiệp vụ: normalizeDoi.
- */
+    /**
+     * Xử lý nghiệp vụ: normalizeDoi.
+     */
     private String normalizeDoi(String doi) {
         if (!StringUtils.hasText(doi)) {
             return null;
@@ -418,9 +470,9 @@ public class OpenAlexClient {
         return doi.replace("https://doi.org/", "").replace("http://doi.org/", "");
     }
 
-/**
- * Xử lý nghiệp vụ: parseDate.
- */
+    /**
+     * Xử lý nghiệp vụ: parseDate.
+     */
     private LocalDate parseDate(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -432,9 +484,9 @@ public class OpenAlexClient {
         }
     }
 
-/**
- * Xử lý nghiệp vụ: textOrNull.
- */
+    /**
+     * Xử lý nghiệp vụ: textOrNull.
+     */
     private String textOrNull(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) {
             return null;
@@ -443,10 +495,140 @@ public class OpenAlexClient {
         return StringUtils.hasText(text) ? text : null;
     }
 
-/**
- * Xử lý nghiệp vụ: stripHtml.
- */
+    /**
+     * Xử lý nghiệp vụ: stripHtml.
+     */
     private String stripHtml(String value) {
         return value == null ? null : value.replaceAll("<[^>]*>", "").trim();
+    }
+
+    /**
+     * Batch fetch metadata cho nhiều works theo OpenAlex IDs.
+     * Sử dụng filter pipe: openalex_id:W1|W2|W3 (tối đa ~50 IDs/request).
+     */
+    public List<ExternalPaperMetadata> fetchWorksByIds(List<String> openAlexIds) {
+        if (openAlexIds == null || openAlexIds.isEmpty()) {
+            return List.of();
+        }
+        List<ExternalPaperMetadata> allResults = new ArrayList<>();
+        // OpenAlex giới hạn ~50 IDs per pipe filter
+        int batchSize = 50;
+        for (int i = 0; i < openAlexIds.size(); i += batchSize) {
+            List<String> batch = openAlexIds.subList(i, Math.min(i + batchSize, openAlexIds.size()));
+            String pipeFilter = String.join("|", batch);
+            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                    appProperties.getOpenalex().getBaseUrl() + "/works")
+                    .queryParam("filter", "openalex_id:" + pipeFilter)
+                    .queryParam("per_page", batch.size())
+                    .queryParam("select", "id,title,publication_year,publication_date,doi,cited_by_count");
+            appendMailto(builder);
+            appendApiKey(builder);
+            JsonNode root = fetchJsonSafe(builder.toUriString());
+            if (root != null && root.has("results") && root.path("results").isArray()) {
+                for (JsonNode work : root.path("results")) {
+                    String id = toOpenAlexWorkId(textOrNull(work.path("id")));
+                    String title = textOrNull(work.path("title"));
+                    String doi = normalizeDoi(textOrNull(work.path("doi")));
+                    LocalDate pubDate = resolvePublicationDate(work);
+                    Integer citations = work.path("cited_by_count").isInt()
+                            ? work.path("cited_by_count").asInt() : null;
+                    allResults.add(new ExternalPaperMetadata(
+                            title, null, doi, pubDate, citations,
+                            List.of(), List.of(), null, null, null, null,
+                            "OPENALEX", id));
+                }
+            }
+        }
+        return allResults;
+    }
+
+    /**
+     * Lấy danh sách referenced_works IDs cho một work cụ thể.
+     * Trả về list OpenAlex IDs (e.g. ["W123", "W456"]).
+     */
+    public List<String> extractReferencedWorkIds(String openAlexId) {
+        if (!StringUtils.hasText(openAlexId)) {
+            return List.of();
+        }
+        String url = appProperties.getOpenalex().getBaseUrl() + "/works/" + openAlexId;
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url)
+                .queryParam("select", "id,referenced_works");
+        appendMailto(builder);
+        appendApiKey(builder);
+        JsonNode node = fetchJsonSafe(builder.toUriString());
+        if (node == null || node.isMissingNode()) {
+            return List.of();
+        }
+        List<String> refs = new ArrayList<>();
+        JsonNode refsNode = node.path("referenced_works");
+        if (refsNode.isArray()) {
+            for (JsonNode ref : refsNode) {
+                String refId = toOpenAlexWorkId(ref.asText(null));
+                if (StringUtils.hasText(refId)) {
+                    refs.add(refId);
+                }
+            }
+        }
+        return refs;
+    }
+
+    /**
+     * Lấy danh sách papers trích dẫn (citing) một work cụ thể.
+     * Sử dụng OpenAlex filter: cites:W...
+     *
+     * @param openAlexId   OpenAlex ID của paper gốc (e.g. "W2741809807")
+     * @param sort         "cited_by_count:desc" hoặc "publication_date:desc"
+     * @param yearFrom     Năm bắt đầu (nullable)
+     * @param yearTo       Năm kết thúc (nullable)
+     * @param perPage      Số lượng kết quả tối đa (default 20)
+     * @return Danh sách ExternalPaperMetadata nhẹ (chỉ title, year, doi, citationCount)
+     */
+    public List<ExternalPaperMetadata> fetchCitingWorks(String openAlexId, String sort,
+                                                        Integer yearFrom, Integer yearTo, int perPage) {
+        if (!StringUtils.hasText(openAlexId)) {
+            return List.of();
+        }
+        StringBuilder filterStr = new StringBuilder("cites:" + openAlexId);
+        if (yearFrom != null) {
+            filterStr.append(",from_publication_date:").append(yearFrom).append("-01-01");
+        }
+        if (yearTo != null) {
+            filterStr.append(",to_publication_date:").append(yearTo).append("-12-31");
+        }
+
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                appProperties.getOpenalex().getBaseUrl() + "/works")
+                .queryParam("filter", filterStr.toString())
+                .queryParam("per_page", Math.min(perPage, 200))
+                .queryParam("select", "id,title,publication_year,publication_date,doi,cited_by_count");
+
+        if (StringUtils.hasText(sort)) {
+            builder.queryParam("sort", sort);
+        } else {
+            builder.queryParam("sort", "cited_by_count:desc");
+        }
+
+        appendMailto(builder);
+        appendApiKey(builder);
+
+        JsonNode root = fetchJsonSafe(builder.toUriString());
+        if (root == null || !root.has("results") || !root.path("results").isArray()) {
+            return List.of();
+        }
+
+        List<ExternalPaperMetadata> results = new ArrayList<>();
+        for (JsonNode work : root.path("results")) {
+            String id = toOpenAlexWorkId(textOrNull(work.path("id")));
+            String title = textOrNull(work.path("title"));
+            String doi = normalizeDoi(textOrNull(work.path("doi")));
+            LocalDate pubDate = resolvePublicationDate(work);
+            Integer citations = work.path("cited_by_count").isInt()
+                    ? work.path("cited_by_count").asInt() : null;
+            results.add(new ExternalPaperMetadata(
+                    title, null, doi, pubDate, citations,
+                    List.of(), List.of(), null, null, null, null,
+                    "OPENALEX", id));
+        }
+        return results;
     }
 }

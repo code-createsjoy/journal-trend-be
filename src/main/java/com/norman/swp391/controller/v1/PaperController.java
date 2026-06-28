@@ -26,14 +26,16 @@ public class PaperController {
     @GetMapping
     public ApiResponse<PageResponse<PaperDetailResponse>> search(
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) String searchType,
             @RequestParam(required = false) Long topicId,
             @RequestParam(required = false) Long authorId,
             @RequestParam(required = false) Integer fromYear,
             @RequestParam(required = false) Integer toYear,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) Integer minCitations,
+            @RequestParam(required = false) Long journalId,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ApiResponse.ok(paperService.search(q, topicId, authorId, fromYear, toYear, category, minCitations, pageable));
+        return ApiResponse.ok(paperService.search(q, searchType, topicId, authorId, fromYear, toYear, category, minCitations, journalId, pageable));
     }
 
     /**
@@ -42,6 +44,14 @@ public class PaperController {
     @GetMapping("/{id}")
     public ApiResponse<PaperDetailResponse> getById(@PathVariable Long id) {
         return ApiResponse.ok(paperService.getById(id));
+    }
+
+    /**
+     * Xử lý API getByIds.
+     */
+    @GetMapping("/bulk")
+    public ApiResponse<java.util.List<PaperDetailResponse>> getByIds(@RequestParam java.util.List<Long> ids) {
+        return ApiResponse.ok(paperService.getByIds(ids));
     }
 
     /**

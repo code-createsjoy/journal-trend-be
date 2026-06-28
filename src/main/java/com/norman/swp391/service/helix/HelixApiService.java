@@ -67,6 +67,7 @@ public class HelixApiService {
     private final CollectionPaperRepository collectionPaperRepository;
     private final SyncLogRepository syncLogRepository;
     private final PaperReviewService paperReviewService;
+    private final KeywordRepository keywordRepository;
 
     public HelixAuthSession login(HelixLoginRequest request) {
         return toHelixSession(authService.login(new LoginRequest(request.email(), request.password())));
@@ -93,13 +94,13 @@ public class HelixApiService {
         Page<Paper> page;
         if (keywordId != null) {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, keywordId, null, null, null, null, null, pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, keywordId, null, null, null, null, null, null, pageable);
         } else if (query == null) {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, null, null, null, null, null, null, null, pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, null, null, null, null, null, null, null, null, null, pageable);
         } else {
             page = paperRepository.search(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, null, null, null, null, null, pageable);
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, query, null, null, null, null, null, null, null, null, pageable);
         }
         List<Paper> paperEntities = page.getContent();
         List<Long> paperIds = paperEntities.stream().map(Paper::getId).toList();
@@ -187,7 +188,8 @@ public class HelixApiService {
 
             if (domain != null) {
                 LocalDate now = LocalDate.now();
-                authorPage = authorRepository.findTrendingAuthorsByDomain(domain, q, now.getYear(), now.getMonthValue(), pageable);
+                authorPage = authorRepository.findTrendingAuthorsByDomain(domain, q, now.getYear(), now.getMonthValue(),
+                        pageable);
             } else {
                 authorPage = authorRepository.findAllAuthors(q, pageable);
             }
@@ -208,7 +210,6 @@ public class HelixApiService {
 
         return PageResponse.from(authorPage, helixAuthors);
     }
-
 
     public List<HelixPaper> listAuthorPapers(String authorId, Integer limit) {
         int size = limit != null && limit > 0 ? Math.min(limit, 100) : 50;
@@ -238,6 +239,16 @@ public class HelixApiService {
 
     public HelixTopicDetail getTopicDetail(String id) {
         long hash = Long.parseLong(id);
+        Optional<Keyword> kwOpt = keywordRepository.findById(hash);
+        if (kwOpt.isPresent()) {
+            Keyword kw = kwOpt.get();
+            return new HelixTopicDetail(
+                    String.valueOf(kw.getKeywordId()),
+                    kw.getTerm(),
+                    "Trending keyword in " + (kw.getDomain() != null ? kw.getDomain() : "Research"),
+                    kw.getPaperCount(),
+                    kw.getTrendScore() != null ? kw.getTrendScore().doubleValue() : 0.0);
+        }
         TrendingTopicResponse matched = keywordTrendService.findTrendingTopics().stream()
                 .filter(t -> t.getTopicId() == hash)
                 .findFirst()
@@ -256,23 +267,37 @@ public class HelixApiService {
     @Transactional(readOnly = true)
     public List<HelixPaper> listPapersByTopic(String topicId, Integer limit) {
         int pageSize = limit != null && limit > 0 ? Math.min(limit, 100) : 50;
-
-        // Resolve domain name from topicId hash
         long hash = Long.parseLong(topicId);
-        String domain = keywordTrendService.findTrendingTopics().stream()
-                .filter(t -> t.getTopicId() == hash)
-                .map(TrendingTopicResponse::getTopicName)
-                .findFirst()
-                .orElse(null);
-
-        if (domain == null) {
-            return List.of();
-        }
-
-        // Fetch papers with any keyword in this domain
-        List<Paper> paperEntities = paperRepository.findByKeywordDomain(domain);
-        if (paperEntities.size() > pageSize) {
-            paperEntities = paperEntities.subList(0, pageSize);
+        Optional<Keyword> kwOpt = keywordRepository.findById(hash);
+        List<Paper> paperEntities;
+        if (kwOpt.isPresent()) {
+            paperEntities = paperRepository.search(
+                    PaperStatus.ACTIVE,
+                    PaperReviewStatus.NONE,
+                    null,
+                    null,
+                    hash,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    PageRequest.of(0, pageSize)
+            ).getContent();
+        } else {
+            String domain = keywordTrendService.findTrendingTopics().stream()
+                    .filter(t -> t.getTopicId() == hash)
+                    .map(TrendingTopicResponse::getTopicName)
+                    .findFirst()
+                    .orElse(null);
+            if (domain == null) {
+                return List.of();
+            }
+            paperEntities = paperRepository.findByKeywordDomain(domain);
+            if (paperEntities.size() > pageSize) {
+                paperEntities = paperEntities.subList(0, pageSize);
+            }
         }
         List<Long> paperIds = paperEntities.stream().map(Paper::getId).toList();
         Map<Long, List<HelixAuthorRef>> authorRefsByPaper = loadAuthorRefsByPaper(paperIds);
@@ -317,7 +342,7 @@ public class HelixApiService {
         List<HelixCategorySlice> slices = buildCategorySlices(topicTrends);
         List<HelixRadarFieldPoint> radar = buildRadarFields(topicTrends);
         List<HelixHeatmapCell> heatmap = buildHeatmap((int) stats.getTotalPapers());
-        
+
         List<HelixKeyword> keywords = monthlyTop.stream()
                 .limit(8)
                 .map(k -> new HelixKeyword(
@@ -452,7 +477,8 @@ public class HelixApiService {
                 .toList();
         List<HelixPendingReviewPaper> pending = paperRepository
                 .findByReviewStatus(
-                        PaperReviewStatus.PENDING_REVIEW, PageRequest.of(0, 10, Sort.by("reviewFlaggedAt").descending()))
+                        PaperReviewStatus.PENDING_REVIEW,
+                        PageRequest.of(0, 10, Sort.by("reviewFlaggedAt").descending()))
                 .getContent()
                 .stream()
                 .map(this::toPendingReview)
@@ -496,7 +522,8 @@ public class HelixApiService {
     }
 
     private HelixPendingReviewPaper toPendingReview(Paper paper) {
-        int year = paper.getPublicationDate() != null ? paper.getPublicationDate().getYear() : LocalDate.now().getYear();
+        int year = paper.getPublicationDate() != null ? paper.getPublicationDate().getYear()
+                : LocalDate.now().getYear();
         Map<Long, List<HelixAuthorRef>> refs = loadAuthorRefsByPaper(List.of(paper.getId()));
         List<String> authors = refs.getOrDefault(paper.getId(), List.of()).stream()
                 .map(HelixAuthorRef::name)
@@ -642,7 +669,8 @@ public class HelixApiService {
         for (Long paperId : paperIds) {
             List<PaperKeyword> links = keywordsByPaper.getOrDefault(paperId, List.of());
             List<HelixTopicRef> keywords = links.stream()
-                    .map(pk -> new HelixTopicRef(String.valueOf(pk.getKeyword().getKeywordId()), pk.getKeyword().getTerm()))
+                    .map(pk -> new HelixTopicRef(String.valueOf(pk.getKeyword().getKeywordId()),
+                            pk.getKeyword().getTerm()))
                     .distinct()
                     .toList();
             double trendScore = links.stream()
@@ -675,8 +703,8 @@ public class HelixApiService {
             return 0;
         }
         LocalDate now = LocalDate.now();
-        Map<Long, Double> scores =
-                loadMonthlyKeywordTrendScores(new HashSet<>(keywordIds), now.getYear(), now.getMonthValue());
+        Map<Long, Double> scores = loadMonthlyKeywordTrendScores(new HashSet<>(keywordIds), now.getYear(),
+                now.getMonthValue());
         return round(
                 keywordIds.stream().mapToDouble(id -> scores.getOrDefault(id, 0.0)).max().orElse(0));
     }
@@ -694,7 +722,7 @@ public class HelixApiService {
     }
 
     private List<HelixCategorySlice> buildCategorySlices(List<TrendingTopicResponse> trending) {
-        String[] fills = {"#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"};
+        String[] fills = { "#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6" };
         List<HelixCategorySlice> slices = new ArrayList<>();
         int i = 0;
         for (TrendingTopicResponse t : trending.stream().limit(5).toList()) {
@@ -794,7 +822,7 @@ public class HelixApiService {
         }
         return switch (source.toLowerCase()) {
             case "crossref" -> "CrossRef";
-            case "semantic scholar", "semanticscholar", "s2" -> "Semantic Scholar";
+            case "semantic scholar", "semanticscholar", "s2" -> "Semantic Scholar"; // Legacy compatibility for existing database records
             default -> "OpenAlex";
         };
     }

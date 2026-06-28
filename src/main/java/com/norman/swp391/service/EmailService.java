@@ -18,5 +18,14 @@ public interface EmailService {
      * @param token     Mã token đặt lại mật khẩu
      */
     void sendPasswordResetEmail(String toEmail, String token);
+
+    /**
+     * Gửi email thông báo khi có bài báo mới trùng khớp với keyword, journal, hoặc author mà người dùng follow.
+     *
+     * @param toEmail   Email người nhận
+     * @param fullName  Họ và tên người nhận
+     * @param papers    Danh sách bài báo mới cần thông báo
+     */
+    void sendNewPaperNotificationsEmail(String toEmail, String fullName, java.util.List<com.norman.swp391.entity.Paper> papers);
 }
 

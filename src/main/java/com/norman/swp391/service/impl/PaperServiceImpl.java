@@ -46,9 +46,10 @@ public class PaperServiceImpl implements PaperService {
 /**
  * Tìm kiếm/lọc: search.
  */
-    public PageResponse<PaperDetailResponse> search(String q, Long topicId, Long authorId, Integer fromYear, Integer toYear, String category, Integer minCitations, Pageable pageable) {
+    public PageResponse<PaperDetailResponse> search(String q, String searchType, Long topicId, Long authorId, Integer fromYear, Integer toYear, String category, Integer minCitations, Long journalId, Pageable pageable) {
         String query = (q != null && q.isBlank()) ? null : q;
         String cat = (category != null && category.trim().equalsIgnoreCase("all")) ? null : category;
+        String type = (searchType != null && searchType.isBlank()) ? null : searchType;
         
         Sort sanitizedSort = pageable.getSort();
         if (sanitizedSort.isSorted()) {
@@ -64,12 +65,14 @@ public class PaperServiceImpl implements PaperService {
                 PaperStatus.ACTIVE,
                 PaperReviewStatus.NONE,
                 query,
+                type,
                 topicId,
                 authorId,
                 fromYear,
                 toYear,
                 cat,
                 minCitations,
+                journalId,
                 safePageable);
         
         List<Paper> papers = page.getContent();
@@ -126,6 +129,29 @@ public class PaperServiceImpl implements PaperService {
                 paper,
                 paperKeywordRepository.findByPaperId(id),
                 paperAuthorRepository.findByPaperId(id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaperDetailResponse> getByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Paper> papers = paperRepository.findAllById(ids).stream()
+                .filter(p -> p.getStatus() == PaperStatus.ACTIVE && p.getReviewStatus() == PaperReviewStatus.NONE)
+                .toList();
+        if (papers.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Long> paperIds = papers.stream().map(Paper::getId).toList();
+        Map<Long, List<Author>> authorsByPaperId = loadAuthorsForPapers(paperIds);
+        Map<Long, List<Keyword>> keywordsByPaperId = loadKeywordsForPapers(paperIds);
+        
+        return papers.stream().map(p -> 
+            PaperMapper.toDetailResponse(p, 
+                keywordsByPaperId.getOrDefault(p.getId(), Collections.emptyList()), 
+                authorsByPaperId.getOrDefault(p.getId(), Collections.emptyList()))
+        ).collect(Collectors.toList());
     }
 
     @Override

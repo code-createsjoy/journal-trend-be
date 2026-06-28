@@ -39,11 +39,31 @@ public class SyncLog {
     private LocalDateTime finishedAt;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 50)
     private SyncStatus status;
 
     @Column(name = "papers_fetched", nullable = false)
     private int papersFetched;
+
+    @Column(name = "api_calls")
+    @Builder.Default
+    private Integer apiCalls = 0;
+
+    @Column(name = "pages_fetched")
+    @Builder.Default
+    private Integer pagesFetched = 0;
+
+    @Column(name = "papers_inserted")
+    @Builder.Default
+    private Integer papersInserted = 0;
+
+    @Column(name = "papers_skipped")
+    @Builder.Default
+    private Integer papersSkipped = 0;
+
+    @Column(name = "early_stop_triggered")
+    @Builder.Default
+    private Boolean earlyStopTriggered = false;
 
     @Column(name = "error_message", length = 2000)
     private String errorMessage;

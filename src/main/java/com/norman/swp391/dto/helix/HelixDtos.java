@@ -252,5 +252,28 @@ public final class HelixDtos {
  * Xử lý nghiệp vụ: HelixSyncResult.
  */
     public record HelixSyncResult(int papersFetched, String status, String message) {}
-}
 
+    /**
+     * Node trong References Graph — metadata nhẹ của referenced work.
+     */
+    public record HelixReferenceNode(
+            String openAlexId,
+            String title,
+            Integer year,
+            String doi,
+            Integer citations,
+            String localPaperId,
+            boolean existsLocally) {}
+
+    /**
+     * Node trong Citation Graph — metadata nhẹ của citing work.
+     */
+    public record HelixCitationNode(
+            String openAlexId,
+            String title,
+            Integer year,
+            String doi,
+            Integer citations,
+            String localPaperId,
+            boolean existsLocally) {}
+}

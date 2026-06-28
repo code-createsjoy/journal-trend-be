@@ -26,10 +26,15 @@ import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.NotificationService;
+import com.norman.swp391.service.EmailService;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -50,6 +55,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final PaperRepository paperRepository;
     private final PaperKeywordRepository paperKeywordRepository;
     private final PaperAuthorRepository paperAuthorRepository;
+    private final EmailService emailService;
 
     @Override
     @Transactional(readOnly = true)
@@ -113,97 +119,228 @@ public class NotificationServiceImpl implements NotificationService {
         if (newPaperIds == null || newPaperIds.isEmpty()) {
             return;
         }
-        
-        // Fast path: if there are no followers at all, skip the 100,000+ queries.
-        if (followKeywordRepository.count() == 0 
-                && followJournalRepository.count() == 0 
-                && followAuthorRepository.count() == 0) {
+
+        // 1. Kiểm tra nhanh và load tất cả follows. Nếu không có ai follow, thoát sớm.
+        List<FollowJournal> allFollowJournals = followJournalRepository.findAll();
+        List<FollowKeyword> allFollowKeywords = followKeywordRepository.findAll();
+        List<FollowAuthor> allFollowAuthors = followAuthorRepository.findAll();
+
+        if (allFollowKeywords.isEmpty() && allFollowJournals.isEmpty() && allFollowAuthors.isEmpty()) {
             return;
         }
 
-        Set<Long> notifiedUsers = new HashSet<>();
-        for (Long paperId : newPaperIds) {
-            Paper paper = paperRepository.findById(paperId).orElse(null);
-            if (paper == null) {
-                continue;
+        // 2. Gom Map mapping follows theo ID thực thể để lookup O(1)
+        Map<Long, List<FollowJournal>> journalFollowers = new HashMap<>();
+        for (FollowJournal fj : allFollowJournals) {
+            if (fj.getJournal() != null && fj.getJournal().getId() != null) {
+                journalFollowers.computeIfAbsent(fj.getJournal().getId(), k -> new ArrayList<>()).add(fj);
             }
-            notifyJournalFollowers(paper, notifiedUsers);
-            notifyKeywordFollowers(paper, notifiedUsers);
-            notifyAuthorFollowers(paper, notifiedUsers);
         }
-    }
 
-    private void notifyJournalFollowers(Paper paper, Set<Long> notifiedUsers) {
-        if (paper.getJournalRef() == null) {
+        Map<Long, List<FollowKeyword>> keywordFollowers = new HashMap<>();
+        for (FollowKeyword fk : allFollowKeywords) {
+            if (fk.getKeyword() != null && fk.getKeyword().getKeywordId() != null) {
+                keywordFollowers.computeIfAbsent(fk.getKeyword().getKeywordId(), k -> new ArrayList<>()).add(fk);
+            }
+        }
+
+        Map<Long, List<FollowAuthor>> authorFollowers = new HashMap<>();
+        for (FollowAuthor fa : allFollowAuthors) {
+            if (fa.getAuthor() != null && fa.getAuthor().getId() != null) {
+                authorFollowers.computeIfAbsent(fa.getAuthor().getId(), k -> new ArrayList<>()).add(fa);
+            }
+        }
+
+        // 3. Load 1000 papers và các quan hệ (Keywords, Authors) bằng Bulk Query
+        List<Paper> papers = paperRepository.findAllById(newPaperIds);
+        if (papers.isEmpty()) {
             return;
         }
-        Long journalId = paper.getJournalRef().getId();
-        for (FollowJournal follow : followJournalRepository.findByJournalId(journalId)) {
-            User user = follow.getUser();
-            if (!notifiedUsers.add(user.getId())) {
-                continue;
+        List<Long> paperIdsList = papers.stream().map(Paper::getId).toList();
+
+        List<PaperKeyword> paperKeywords = paperKeywordRepository.findByPaperIdInWithKeyword(paperIdsList);
+        List<PaperAuthor> paperAuthors = paperAuthorRepository.findByPaperIdInWithAuthor(paperIdsList);
+
+        // Group quan hệ theo paperId
+        Map<Long, List<Keyword>> paperKeywordsMap = new HashMap<>();
+        for (PaperKeyword pk : paperKeywords) {
+            if (pk.getPaper() != null && pk.getKeyword() != null) {
+                paperKeywordsMap.computeIfAbsent(pk.getPaper().getId(), k -> new ArrayList<>()).add(pk.getKeyword());
             }
-            if (notificationRepository.existsByUserIdAndPaperId(user.getId(), paper.getId())) {
-                continue;
-            }
-            notificationRepository.save(Notification.builder()
-                    .user(user)
-                    .paper(paper)
-                    .journal(paper.getJournalRef())
-                    .message("New paper in journal you follow: " + truncate(paper.getTitle(), 120))
-                    .triggerType(NotificationTriggerType.NEW_PAPER)
-                    .readStatus(NotificationReadStatus.UNREAD)
-                    .createdAt(LocalDateTime.now())
-                    .build());
         }
+
+        Map<Long, List<Author>> paperAuthorsMap = new HashMap<>();
+        for (PaperAuthor pa : paperAuthors) {
+            if (pa.getPaper() != null && pa.getAuthor() != null) {
+                paperAuthorsMap.computeIfAbsent(pa.getPaper().getId(), k -> new ArrayList<>()).add(pa.getAuthor());
+            }
+        }
+
+        // 4. Load tất cả thông báo đã có của các paper này để tránh trùng lặp
+        List<Object[]> existingNotifsRaw = notificationRepository.findUserIdAndPaperIdByPaperIdIn(paperIdsList);
+        Set<String> existingNotifKeys = new HashSet<>();
+        for (Object[] row : existingNotifsRaw) {
+            if (row[0] != null && row[1] != null) {
+                existingNotifKeys.add(row[0] + "-" + row[1]);
+            }
+        }
+
+        // 5. Khớp nối in-memory và gom danh sách cần insert
+        Map<User, Set<Paper>> userNewPapersMap = new HashMap<>();
+        List<Notification> notificationsToSave = new ArrayList<>();
+
+        for (Paper paper : papers) {
+            Long paperId = paper.getId();
+            Set<Long> notifiedUsersForPaper = new HashSet<>();
+
+            // A. Theo dõi Journal
+            if (paper.getJournalRef() != null) {
+                Long journalId = paper.getJournalRef().getId();
+                List<FollowJournal> fjs = journalFollowers.get(journalId);
+                if (fjs != null) {
+                    for (FollowJournal fj : fjs) {
+                        User user = fj.getUser();
+                        if (notifiedUsersForPaper.add(user.getId())) {
+                            String key = user.getId() + "-" + paperId;
+                            if (!existingNotifKeys.contains(key)) {
+                                notificationsToSave.add(Notification.builder()
+                                        .user(user)
+                                        .paper(paper)
+                                        .journal(paper.getJournalRef())
+                                        .message("New paper in journal you follow: " + truncate(paper.getTitle(), 120))
+                                        .triggerType(NotificationTriggerType.NEW_PAPER)
+                                        .readStatus(NotificationReadStatus.UNREAD)
+                                        .createdAt(LocalDateTime.now())
+                                        .build());
+                                userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // B. Theo dõi Keyword
+            List<Keyword> keywords = paperKeywordsMap.get(paperId);
+            if (keywords != null) {
+                for (Keyword keyword : keywords) {
+                    List<FollowKeyword> fks = keywordFollowers.get(keyword.getKeywordId());
+                    if (fks != null) {
+                        for (FollowKeyword fk : fks) {
+                            User user = fk.getUser();
+                            if (notifiedUsersForPaper.add(user.getId())) {
+                                String key = user.getId() + "-" + paperId;
+                                if (!existingNotifKeys.contains(key)) {
+                                    notificationsToSave.add(Notification.builder()
+                                            .user(user)
+                                            .paper(paper)
+                                            .keyword(keyword)
+                                            .message("New paper with keyword \"" + keyword.getTerm() + "\": " + truncate(paper.getTitle(), 80))
+                                            .triggerType(NotificationTriggerType.NEW_PAPER)
+                                            .readStatus(NotificationReadStatus.UNREAD)
+                                            .createdAt(LocalDateTime.now())
+                                            .build());
+                                    userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // C. Theo dõi Author
+            List<Author> authors = paperAuthorsMap.get(paperId);
+            if (authors != null) {
+                for (Author author : authors) {
+                    List<FollowAuthor> fas = authorFollowers.get(author.getId());
+                    if (fas != null) {
+                        for (FollowAuthor fa : fas) {
+                            User user = fa.getUser();
+                            if (notifiedUsersForPaper.add(user.getId())) {
+                                String key = user.getId() + "-" + paperId;
+                                if (!existingNotifKeys.contains(key)) {
+                                    notificationsToSave.add(Notification.builder()
+                                            .user(user)
+                                            .paper(paper)
+                                            .author(author)
+                                            .message("New paper from author you follow: " + author.getName() + " - " + truncate(paper.getTitle(), 80))
+                                            .triggerType(NotificationTriggerType.NEW_PAPER)
+                                            .readStatus(NotificationReadStatus.UNREAD)
+                                            .createdAt(LocalDateTime.now())
+                                            .build());
+                                    userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. Bulk Save tất cả Notification
+        if (!notificationsToSave.isEmpty()) {
+            notificationRepository.saveAll(notificationsToSave);
+        }
+
+        // 7. Gửi mail bất đồng bộ (Async) cho từng user nhận được bài báo mới
+        userNewPapersMap.forEach((user, papersList) -> {
+            if (user.getEmail() != null) {
+                emailService.sendNewPaperNotificationsEmail(
+                        user.getEmail(),
+                        user.getFullName(),
+                        new ArrayList<>(papersList)
+                );
+            }
+        });
     }
 
-    private void notifyKeywordFollowers(Paper paper, Set<Long> notifiedUsers) {
-        for (PaperKeyword pk : paperKeywordRepository.findByPaperId(paper.getId())) {
-            Keyword keyword = pk.getKeyword();
-            for (FollowKeyword follow : followKeywordRepository.findByKeywordId(keyword.getKeywordId())) {
-                User user = follow.getUser();
-                if (!notifiedUsers.add(user.getId())) {
-                    continue;
-                }
-                if (notificationRepository.existsByUserIdAndPaperId(user.getId(), paper.getId())) {
-                    continue;
-                }
-                notificationRepository.save(Notification.builder()
-                        .user(user)
-                        .paper(paper)
-                        .keyword(keyword)
-                        .message("New paper with keyword \"" + keyword.getTerm() + "\": " + truncate(paper.getTitle(), 80))
-                        .triggerType(NotificationTriggerType.NEW_PAPER)
-                        .readStatus(NotificationReadStatus.UNREAD)
-                        .createdAt(LocalDateTime.now())
-                        .build());
-            }
-        }
+    @Override
+    @Transactional
+    public void delete(Long notificationId) {
+        Long userId = requireUserId();
+        Notification notification = notificationRepository
+                .findById(notificationId)
+                .filter(n -> n.getUser().getId().equals(userId))
+                .orElseThrow(() -> new ResourceNotFoundException("Notification", notificationId));
+        notificationRepository.delete(notification);
     }
 
-    private void notifyAuthorFollowers(Paper paper, Set<Long> notifiedUsers) {
-        for (PaperAuthor pa : paperAuthorRepository.findByPaperId(paper.getId())) {
-            Author author = pa.getAuthor();
-            for (FollowAuthor follow : followAuthorRepository.findByAuthorId(author.getId())) {
-                User user = follow.getUser();
-                if (!notifiedUsers.add(user.getId())) {
-                    continue;
-                }
-                if (notificationRepository.existsByUserIdAndPaperId(user.getId(), paper.getId())) {
-                    continue;
-                }
-                notificationRepository.save(Notification.builder()
-                        .user(user)
-                        .paper(paper)
-                        .author(author)
-                        .message("New paper from author you follow: " + author.getName() + " - " + truncate(paper.getTitle(), 80))
-                        .triggerType(NotificationTriggerType.NEW_PAPER)
-                        .readStatus(NotificationReadStatus.UNREAD)
-                        .createdAt(LocalDateTime.now())
-                        .build());
-            }
+    @Override
+    @Transactional
+    public void deleteMultiple(List<Long> notificationIds) {
+        if (notificationIds == null || notificationIds.isEmpty()) {
+            return;
         }
+        Long userId = requireUserId();
+        notificationRepository.deleteByUserIdAndIds(userId, notificationIds);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAll() {
+        Long userId = requireUserId();
+        notificationRepository.deleteByUserId(userId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAllRead() {
+        Long userId = requireUserId();
+        notificationRepository.deleteByUserIdAndReadStatus(userId, NotificationReadStatus.READ);
+    }
+
+    @Override
+    @Transactional
+    public void markMultipleAsRead(List<Long> notificationIds) {
+        if (notificationIds == null || notificationIds.isEmpty()) {
+            return;
+        }
+        Long userId = requireUserId();
+        List<Notification> notifications = notificationRepository.findAllById(notificationIds);
+        List<Notification> toSave = notifications.stream()
+                .filter(n -> n.getUser().getId().equals(userId))
+                .peek(n -> n.setReadStatus(NotificationReadStatus.READ))
+                .toList();
+        notificationRepository.saveAll(toSave);
     }
 
     private static String truncate(String text, int max) {

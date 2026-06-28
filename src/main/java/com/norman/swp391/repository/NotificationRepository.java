@@ -5,8 +5,9 @@ import com.norman.swp391.entity.enums.NotificationReadStatus;
 import com.norman.swp391.entity.enums.NotificationTriggerType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
-
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -35,4 +36,19 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             @Param("userId") Long userId, 
             @Param("keywordId") Long keywordId, 
             @Param("triggerType") NotificationTriggerType triggerType);
+
+    @Query("SELECT n.user.id, n.paper.id FROM Notification n WHERE n.paper.id IN :paperIds")
+    List<Object[]> findUserIdAndPaperIdByPaperIdIn(@Param("paperIds") List<Long> paperIds);
+
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.user.id = :userId AND n.id IN :ids")
+    void deleteByUserIdAndIds(@Param("userId") Long userId, @Param("ids") List<Long> ids);
+
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.user.id = :userId")
+    void deleteByUserId(@Param("userId") Long userId);
+
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.user.id = :userId AND n.readStatus = :readStatus")
+    void deleteByUserIdAndReadStatus(@Param("userId") Long userId, @Param("readStatus") NotificationReadStatus readStatus);
 }

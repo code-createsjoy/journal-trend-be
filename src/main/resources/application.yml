@@ -7,6 +7,8 @@ server:
       force: true
 
 spring:
+  config:
+    import: optional:classpath:application-local.yml
   application:
     name: journal-trend-be
   http:
@@ -55,28 +57,29 @@ app:
   password-reset-expiration-minutes: 30
   email-verification-expiration-minutes: ${EMAIL_VERIFICATION_EXPIRATION_MINUTES:1440}
   rate-limit-per-minute: 60
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-2.0-flash}
+    max-output-tokens: ${GEMINI_MAX_TOKENS:1024}
   openalex:
     base-url: https://api.openalex.org
-    mailto: ${OPENALEX_MAILTO:research@example.com}
+    # mailto: ${OPENALEX_MAILTO:research@example.com}
+    mailto: ${OPENALEX_MAILTO:quocthaiarct2005@gmail.com}
     per-page: ${OPENALEX_PER_PAGE:200}
-  semantic-scholar:
-    base-url: https://api.semanticscholar.org/graph/v1
-    api-key: ${SEMANTIC_SCHOLAR_API_KEY:}
+    api-key: ${OPENALEX_API_KEY:r2ywilzU3nvjc7e8VVrELN}
   sync:
     cron: ${SYNC_CRON:0 0 2 * * *}
     on-startup: ${SYNC_ON_STARTUP:false}
     min-keyword-papers: ${MIN_KEYWORD_PAPERS:5}
     trending-threshold-percent: ${TRENDING_THRESHOLD:15}
     trending-consecutive-months: ${TRENDING_CONSECUTIVE_MONTHS:3}
-    max-pages: ${SYNC_MAX_PAGES:20}
+    max-pages: ${SYNC_MAX_PAGES:40}
     max-papers-per-run: ${SYNC_MAX_PAPERS_PER_RUN:1000}
-    from-publication-date: ${SYNC_FROM_PUBLICATION_DATE:2026-01-01}
+    from-publication-date: ${SYNC_FROM_PUBLICATION_DATE:2026-03-01}
     ingest-batch-size: ${SYNC_INGEST_BATCH_SIZE:25}
     enrich-on-sync: ${SYNC_ENRICH_ON_SYNC:false}
     enrich-batch-size: ${SYNC_ENRICH_BATCH_SIZE:20}
     enrich-delay-ms: ${SYNC_ENRICH_DELAY_MS:50}
-    semantic-scholar-on-sync: ${SYNC_SEMANTIC_SCHOLAR_ON_SYNC:false}
-    external-enrich-on-ingest: false
     stale-sync-minutes: ${SYNC_STALE_MINUTES:60}
     http-connect-timeout-ms: ${SYNC_HTTP_CONNECT_TIMEOUT_MS:10000}
     http-read-timeout-ms: ${SYNC_HTTP_READ_TIMEOUT_MS:30000}
@@ -88,6 +91,9 @@ app:
     anomaly-threshold-percent: ${ANOMALY_THRESHOLD_PERCENT:300}
     pending-review-expiry-days: ${PENDING_REVIEW_EXPIRY_DAYS:30}
     trend-backfill-months: ${TREND_BACKFILL_MONTHS:12}
+    overlap-days: ${SYNC_OVERLAP_DAYS:7}
+    early-stopping-enabled: ${SYNC_EARLY_STOPPING:true}
+    early-stop-consecutive-empty-pages: ${SYNC_EARLY_STOP_PAGES:3}
     search-queries:
       - artificial intelligence
       - machine learning
@@ -95,7 +101,8 @@ app:
       - Generative AI
       - Large Language Models
       - Robotics
-      - Data Science
+      - Data Science              
+
   scheduler-enabled: ${SCHEDULER_ENABLED:true}
 
 springdoc:

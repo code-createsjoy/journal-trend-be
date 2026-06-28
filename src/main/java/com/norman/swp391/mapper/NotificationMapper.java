@@ -23,6 +23,11 @@ public class NotificationMapper {
                 .message(notification.getMessage())
                 .readStatus(notification.getReadStatus())
                 .createdAt(notification.getCreatedAt())
+                .triggerType(notification.getTriggerType() != null ? notification.getTriggerType().name() : null)
+                .keywordId(notification.getKeyword() != null ? notification.getKeyword().getKeywordId() : null)
+                .journalId(notification.getJournal() != null ? notification.getJournal().getId() : null)
+                .authorId(notification.getAuthor() != null ? notification.getAuthor().getId() : null)
+                .paperId(notification.getPaper() != null ? notification.getPaper().getId() : null)
                 .build();
     }
 
