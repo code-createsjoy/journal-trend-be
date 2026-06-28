@@ -497,14 +497,27 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 }
             }
 
+            // Keyword filter config — computed once for the whole batch
+            int maxKwPerPaper = appProperties.getSync().getMaxKeywordsPerPaper();
+            List<String> allowedDomainsCfg = appProperties.getSync().getAllowedKeywordDomains();
+            Set<String> allowedDomainsLower = new HashSet<>();
+            if (allowedDomainsCfg != null) {
+                for (String d : allowedDomainsCfg) {
+                    if (StringUtils.hasText(d)) allowedDomainsLower.add(d.trim().toLowerCase());
+                }
+            }
+
             // 2. Bulk fetch existing keywords
             Set<String> allKeywordTerms = new HashSet<>();
             for (ExternalPaperMetadata metadata : validMetas) {
                 if (metadata.keywords() != null) {
                     for (ExternalKeywordInfo kw : metadata.keywords()) {
-                        if (StringUtils.hasText(kw.term())) {
-                            allKeywordTerms.add(kw.term().trim().toLowerCase());
+                        if (!StringUtils.hasText(kw.term())) continue;
+                        if (!allowedDomainsLower.isEmpty()) {
+                            String d = StringUtils.hasText(kw.domain()) ? kw.domain().trim().toLowerCase() : "general";
+                            if (!allowedDomainsLower.contains(d)) continue;
                         }
+                        allKeywordTerms.add(kw.term().trim().toLowerCase());
                     }
                 }
             }
@@ -522,6 +535,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 if (metadata.keywords() == null) continue;
                 for (ExternalKeywordInfo info : metadata.keywords()) {
                     if (!StringUtils.hasText(info.term())) continue;
+                    if (!allowedDomainsLower.isEmpty()) {
+                        String d = StringUtils.hasText(info.domain()) ? info.domain().trim().toLowerCase() : "general";
+                        if (!allowedDomainsLower.contains(d)) continue;
+                    }
                     String term = info.term().trim();
                     String domain = StringUtils.hasText(info.domain()) ? info.domain().trim() : "General";
                     Keyword kw = keywordMap.get(term.toLowerCase());
@@ -783,16 +800,23 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 Paper paper = metaToPaperMap.get(metadata);
                 if (paper == null || paper.getId() == null) continue;
 
-                // Link keywords in batch
+                // Link keywords in batch — apply domain filter + per-paper cap
                 if (metadata.keywords() != null) {
                     Set<Long> existingKeywordIds = paperToKeywordsMap.computeIfAbsent(paper.getId(), k -> new HashSet<>());
+                    int kwCount = 0;
                     for (ExternalKeywordInfo info : metadata.keywords()) {
+                        if (maxKwPerPaper > 0 && kwCount >= maxKwPerPaper) break;
                         if (!StringUtils.hasText(info.term())) continue;
+                        if (!allowedDomainsLower.isEmpty()) {
+                            String d = StringUtils.hasText(info.domain()) ? info.domain().trim().toLowerCase() : "general";
+                            if (!allowedDomainsLower.contains(d)) continue;
+                        }
                         Keyword kw = keywordMap.get(info.term().trim().toLowerCase());
                         if (kw != null && kw.getKeywordId() != null) {
                             if (!existingKeywordIds.contains(kw.getKeywordId())) {
                                 paperKeywordsToSave.add(PaperKeyword.builder().paper(paper).keyword(kw).build());
                                 existingKeywordIds.add(kw.getKeywordId());
+                                kwCount++;
                             }
                         }
                     }

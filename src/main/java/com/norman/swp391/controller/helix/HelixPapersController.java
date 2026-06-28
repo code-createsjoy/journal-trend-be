@@ -8,6 +8,7 @@ import com.norman.swp391.service.PaperReferenceService;
 import com.norman.swp391.service.helix.HelixApiService;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -41,11 +42,11 @@ public class HelixPapersController {
      * Xử lý API getById.
      */
     @GetMapping("/{id}")
-    public HelixPaper getById(@PathVariable String id) {
+    public ResponseEntity<HelixPaper> getById(@PathVariable String id) {
         try {
-            return helixApiService.getPaper(id);
+            return ResponseEntity.ok(helixApiService.getPaper(id));
         } catch (ResourceNotFoundException ex) {
-            return null;
+            return ResponseEntity.notFound().build();
         }
     }
 
