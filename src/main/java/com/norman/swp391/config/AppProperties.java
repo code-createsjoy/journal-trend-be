@@ -122,6 +122,17 @@ public class AppProperties {
         private boolean earlyStoppingEnabled = true;
         /** Dừng crawl keyword khi N trang liên tiếp không có paper mới nào. */
         private int earlyStopConsecutiveEmptyPages = 3;
+        /** Cap keywords linked per paper during ingest. 0 = no limit. */
+        private int maxKeywordsPerPaper = 10;
+        /** Domains to allow when linking keywords to papers (empty list = allow all). */
+        private List<String> allowedKeywordDomains = new ArrayList<>(List.of(
+                "Computer Science",
+                "Artificial Intelligence",
+                "Machine Learning",
+                "Mathematics",
+                "Engineering",
+                "Statistics and Probability",
+                "Information Science"));
     }
 }
 

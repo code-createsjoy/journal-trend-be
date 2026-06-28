@@ -81,14 +81,16 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
                 .map(PaperReference::getReferencedOpenAlexId)
                 .toList();
 
-        // 3. Batch lookup cached metadata
+        // 3. Batch lookup cached metadata — chỉ lấy entries còn fresh (trong 7 ngày)
+        LocalDateTime staleThreshold = LocalDateTime.now().minusDays(7);
         Map<String, ReferenceMetadata> cachedMap = new HashMap<>();
-        List<ReferenceMetadata> cachedList = referenceMetadataRepository.findByOpenAlexIdIn(openAlexIds);
+        List<ReferenceMetadata> cachedList =
+                referenceMetadataRepository.findByOpenAlexIdInAndFetchedAtAfter(openAlexIds, staleThreshold);
         for (ReferenceMetadata rm : cachedList) {
             cachedMap.put(rm.getOpenAlexId(), rm);
         }
 
-        // 4. Identify cache misses and batch fetch
+        // 4. Identify cache misses (chưa có hoặc đã stale) và batch fetch
         List<String> missingIds = openAlexIds.stream()
                 .filter(id -> !cachedMap.containsKey(id))
                 .distinct()
@@ -105,29 +107,40 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
                     }
                 }
 
-                // Check database again inside transaction right before saving to avoid duplicate key issues
+                // Load existing DB rows (may be stale or concurrent inserts)
                 List<ReferenceMetadata> existingMeta = referenceMetadataRepository.findByOpenAlexIdIn(missingIds);
                 Map<String, ReferenceMetadata> existingMetaMap = existingMeta.stream()
                         .collect(Collectors.toMap(ReferenceMetadata::getOpenAlexId, rm -> rm, (a, b) -> a));
 
                 List<ReferenceMetadata> toSave = new ArrayList<>();
+                LocalDateTime now = LocalDateTime.now();
                 for (String missingId : missingIds) {
-                    if (existingMetaMap.containsKey(missingId)) {
-                        cachedMap.put(missingId, existingMetaMap.get(missingId));
-                        continue;
-                    }
                     ExternalPaperMetadata meta = fetchedMap.get(missingId);
-                    ReferenceMetadata rm = ReferenceMetadata.builder()
-                            .openAlexId(missingId)
-                            .title(meta != null ? meta.title() : null)
-                            .publicationYear(meta != null && meta.publicationDate() != null
-                                    ? meta.publicationDate().getYear() : null)
-                            .doi(meta != null ? meta.doi() : null)
-                            .citationCount(meta != null ? meta.citationCount() : null)
-                            .fetchedAt(LocalDateTime.now())
-                            .build();
-                    toSave.add(rm);
-                    cachedMap.put(missingId, rm);
+                    ReferenceMetadata existing = existingMetaMap.get(missingId);
+                    if (existing != null) {
+                        // Entry exists but may be stale — update in place with fresh data
+                        existing.setTitle(meta != null ? meta.title() : existing.getTitle());
+                        existing.setPublicationYear(meta != null && meta.publicationDate() != null
+                                ? meta.publicationDate().getYear() : existing.getPublicationYear());
+                        existing.setDoi(meta != null ? meta.doi() : existing.getDoi());
+                        existing.setCitationCount(meta != null ? meta.citationCount() : existing.getCitationCount());
+                        existing.setFetchedAt(now);
+                        toSave.add(existing);
+                        cachedMap.put(missingId, existing);
+                    } else {
+                        // Truly new entry — insert
+                        ReferenceMetadata rm = ReferenceMetadata.builder()
+                                .openAlexId(missingId)
+                                .title(meta != null ? meta.title() : null)
+                                .publicationYear(meta != null && meta.publicationDate() != null
+                                        ? meta.publicationDate().getYear() : null)
+                                .doi(meta != null ? meta.doi() : null)
+                                .citationCount(meta != null ? meta.citationCount() : null)
+                                .fetchedAt(now)
+                                .build();
+                        toSave.add(rm);
+                        cachedMap.put(missingId, rm);
+                    }
                 }
                 if (!toSave.isEmpty()) {
                     try {
