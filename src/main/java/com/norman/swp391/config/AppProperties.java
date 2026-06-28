@@ -34,6 +34,11 @@ public class AppProperties {
     private OpenAlex openalex = new OpenAlex();
 
     /**
+     * Thực hiện Gemini AI.
+     */
+    private Gemini gemini = new Gemini();
+
+    /**
      * Thực hiện Sync.
      */
     private Sync sync = new Sync();
@@ -63,6 +68,19 @@ public class AppProperties {
     }
 
 
+
+    @Getter
+    @Setter
+    /**
+     * Cấu hình Gemini AI.
+     */
+    public static class Gemini {
+        private String apiKey = "";
+        private String baseUrl = "https://generativelanguage.googleapis.com/v1beta";
+        private String model = "gemini-2.0-flash";
+        private int maxOutputTokens = 2048;
+        private int readTimeoutMs = 60_000;
+    }
 
     @Getter
     @Setter

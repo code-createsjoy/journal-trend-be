@@ -29,6 +29,14 @@ public class RestClientConfig {
                 .build();
     }
 
+    @Bean("geminiRestClient")
+    RestClient geminiRestClient(AppProperties appProperties) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10_000);
+        factory.setReadTimeout(appProperties.getGemini().getReadTimeoutMs());
+        return RestClient.builder().requestFactory(factory).build();
+    }
+
 //    @Bean
 //    RestClient externalApiRestClient(AppProperties appProperties, ObjectMapper objectMapper) {
 //        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();

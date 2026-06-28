@@ -357,3 +357,7 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij,node,maven,visualstudiocode,react,java,windows
+
+# Local config with secrets (API keys, passwords) - never commit
+application-local.yml
+application-local.yaml
