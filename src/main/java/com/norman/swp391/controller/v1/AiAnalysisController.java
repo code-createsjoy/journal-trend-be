@@ -1,7 +1,9 @@
 package com.norman.swp391.controller.v1;
 
 import com.norman.swp391.dto.common.ApiResponse;
+import com.norman.swp391.dto.request.ai.AiTopTrendsAnalysisRequest;
 import com.norman.swp391.dto.request.ai.AiTrendAnalysisRequest;
+import com.norman.swp391.dto.response.ai.AiTopTrendsAnalysisResponse;
 import com.norman.swp391.dto.response.ai.AiTrendAnalysisResponse;
 import com.norman.swp391.service.AiAnalysisService;
 import jakarta.validation.Valid;
@@ -28,5 +30,10 @@ public class AiAnalysisController {
     @PostMapping("/analyze-trend")
     public ApiResponse<AiTrendAnalysisResponse> analyzeTrend(@Valid @RequestBody AiTrendAnalysisRequest request) {
         return ApiResponse.ok("AI analysis completed", aiAnalysisService.analyzeTrend(request));
+    }
+
+    @PostMapping("/analyze-top-trends")
+    public ApiResponse<AiTopTrendsAnalysisResponse> analyzeTopTrends(@Valid @RequestBody AiTopTrendsAnalysisRequest request) {
+        return ApiResponse.ok("AI top trends analysis completed", aiAnalysisService.analyzeTopTrends(request));
     }
 }
