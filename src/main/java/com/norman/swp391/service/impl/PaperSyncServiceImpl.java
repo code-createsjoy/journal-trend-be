@@ -49,6 +49,7 @@ import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.TransactionDefinition;
@@ -82,6 +83,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
     private final KeywordTrendService keywordTrendService;
     private final PaperReviewService paperReviewService;
     private final TransactionTemplate transactionTemplate;
+    private final CacheManager cacheManager;
 
     // [Fix #2] Graceful shutdown support
     private volatile boolean shutdownRequested = false;
@@ -405,6 +407,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                     () -> notificationService.notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords()));
             runPostSyncTask("notifyNewPapers",
                     () -> notificationService.notifyNewPapersForSubscriptions(newPaperIds));
+            runPostSyncTask("evictDashboardCache", () -> {
+                var cache = cacheManager.getCache("dashboardSummary");
+                if (cache != null) cache.clear();
+            });
 
             // [Fix #2] Check if shutdown was requested during sync — mark appropriately
             if (shutdownRequested) {
