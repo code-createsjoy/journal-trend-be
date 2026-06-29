@@ -25,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -42,6 +43,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final KeywordTrendService keywordTrendService;
 
     @Override
+    @Cacheable(value = "dashboardSummary", key = "#isAdmin")
     @Transactional(readOnly = true)
     public DashboardSummaryResponse getDashboardSummary(boolean isAdmin) {
         // 1. KPI Cards
