@@ -74,6 +74,7 @@ public class PersonalReportResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class AuthorInfluencePoint {
+        private Long authorId;
         private String authorName;
         private Long paperCount;
         private String mainDomain;

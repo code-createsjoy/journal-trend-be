@@ -259,6 +259,7 @@ public class PersonalReportServiceImpl implements PersonalReportService {
             }
 
             bubbleChart.add(AuthorInfluencePoint.builder()
+                    .authorId(author.getId())
                     .authorName(author.getName())
                     .paperCount(count)
                     .mainDomain(author.getAffiliation() != null ? author.getAffiliation() : "Academic Institute")
