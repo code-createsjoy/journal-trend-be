@@ -94,6 +94,12 @@ app:
     overlap-days: ${SYNC_OVERLAP_DAYS:7}
     early-stopping-enabled: ${SYNC_EARLY_STOPPING:true}
     early-stop-consecutive-empty-pages: ${SYNC_EARLY_STOP_PAGES:3}
+    forecast-cron: ${FORECAST_CRON:0 0 4 1 * *}
+    forecast-min-months: ${FORECAST_MIN_MONTHS:6}
+    forecast-max-keywords: ${FORECAST_MAX_KEYWORDS:200}
+    forecast-weight-slope: ${FORECAST_WEIGHT_SLOPE:0.5}
+    forecast-weight-acc: ${FORECAST_WEIGHT_ACC:0.3}
+    forecast-weight-volume: ${FORECAST_WEIGHT_VOLUME:0.2}
     search-queries:
       - artificial intelligence
       - machine learning

@@ -151,6 +151,19 @@ public class AppProperties {
                 "Engineering",
                 "Statistics and Probability",
                 "Information Science"));
+
+        /** Cron cho job dự báo hot topic — mặc định 4AM ngày 1 hàng tháng. */
+        private String forecastCron = "0 0 4 1 * *";
+        /** Số tháng lịch sử tối thiểu để tính forecast. */
+        private int forecastMinMonths = 6;
+        /** Số keyword tối đa lưu vào bảng forecast. */
+        private int forecastMaxKeywords = 200;
+        /** Trọng số slope trong sTPS (mặc định 0.5). */
+        private double forecastWeightSlope = 0.5;
+        /** Trọng số acceleration trong sTPS (mặc định 0.3). */
+        private double forecastWeightAcc = 0.3;
+        /** Trọng số volume trong sTPS (mặc định 0.2). */
+        private double forecastWeightVolume = 0.2;
     }
 }
 

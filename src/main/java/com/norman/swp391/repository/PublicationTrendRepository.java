@@ -30,6 +30,14 @@ public interface PublicationTrendRepository extends JpaRepository<PublicationTre
     @Query("SELECT pt FROM PublicationTrend pt WHERE pt.keyword.keywordId = :keywordId ORDER BY pt.year DESC, pt.month DESC")
     List<PublicationTrend> findByKeywordIdOrderByYearDescMonthDesc(@Param("keywordId") Long keywordId);
 
+    /** Tải toàn bộ trend (kèm keyword) theo thứ tự thời gian — dùng cho job forecast, tránh N+1. */
+    @Query("""
+        SELECT pt FROM PublicationTrend pt
+        JOIN FETCH pt.keyword k
+        ORDER BY k.keywordId ASC, pt.year ASC, pt.month ASC
+        """)
+    List<PublicationTrend> findAllWithKeywordOrderedByDate();
+
     @Query("""
         SELECT pt FROM PublicationTrend pt
         JOIN FETCH pt.keyword
