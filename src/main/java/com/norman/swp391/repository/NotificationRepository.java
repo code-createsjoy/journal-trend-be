@@ -6,6 +6,7 @@ import com.norman.swp391.entity.enums.NotificationTriggerType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import java.util.List;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -19,6 +20,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 /**
  * Tìm kiếm: findByUserIdOrderByCreatedAtDesc.
  */
+    @EntityGraph(attributePaths = {"keyword", "paper", "journal", "author"})
     Page<Notification> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
 /**
