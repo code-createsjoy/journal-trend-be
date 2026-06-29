@@ -274,4 +274,35 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
             ORDER BY COUNT(cp.id) DESC, p.citationCount DESC
             """)
     List<Object[]> findPopularPapersByAuthor(@Param("authorId") Long authorId);
+
+    @Query("""
+        SELECT DISTINCT p FROM Paper p
+        JOIN PaperKeyword pk ON pk.paper.id = p.id
+        WHERE pk.keyword.keywordId IN :keywordIds
+          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        ORDER BY p.citationCount DESC
+        """)
+    List<Paper> findTopCitedByKeywordIds(
+            @Param("keywordIds") java.util.Collection<Long> keywordIds, 
+            Pageable pageable);
+
+    @Query("""
+        SELECT DISTINCT p FROM Paper p
+        JOIN PaperAuthor pa ON pa.paper.id = p.id
+        WHERE pa.author.id IN :authorIds
+          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        ORDER BY p.publicationDate DESC, p.id DESC
+        """)
+    List<Paper> findLatestByAuthorIds(@Param("authorIds") java.util.Collection<Long> authorIds, Pageable pageable);
+
+    @Query("""
+        SELECT p, COUNT(pk.id) as matchCount
+        FROM PaperKeyword pk
+        JOIN pk.paper p
+        WHERE pk.keyword.keywordId IN :keywordIds
+          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        GROUP BY p.id, p.title, p.abstractText, p.doi, p.publicationDate, p.citationCount, p.pdfUrl, p.sourceUrl, p.openAccess, p.sourceType, p.sourceIdentifier, p.primarySource, p.status, p.reviewStatus, p.createdAt, p.journal, p.journalRef
+        ORDER BY COUNT(pk.id) DESC, p.citationCount DESC
+        """)
+    List<Object[]> findByKeywordOverlap(@Param("keywordIds") java.util.Collection<Long> keywordIds, Pageable pageable);
 }

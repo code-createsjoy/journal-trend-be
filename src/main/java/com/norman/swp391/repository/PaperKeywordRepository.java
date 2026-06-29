@@ -102,4 +102,42 @@ public interface PaperKeywordRepository extends JpaRepository<PaperKeyword, Long
         ORDER BY COUNT(pk.id) DESC
         """)
     List<Object[]> findTopKeywordsByAuthor(@Param("authorId") Long authorId, Pageable pageable);
+
+    @Query("""
+        SELECT pk.keyword.term, YEAR(p.publicationDate), COUNT(p)
+        FROM PaperKeyword pk
+        JOIN pk.paper p
+        WHERE pk.keyword.keywordId IN :keywordIds 
+          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE 
+          AND p.publicationDate IS NOT NULL 
+          AND YEAR(p.publicationDate) >= 2020
+        GROUP BY pk.keyword.term, YEAR(p.publicationDate)
+        ORDER BY pk.keyword.term, YEAR(p.publicationDate)
+        """)
+    List<Object[]> countYearlyPapersByKeywordIds(@Param("keywordIds") java.util.Collection<Long> keywordIds);
+
+    @Query("""
+        SELECT p.journal, COUNT(p)
+        FROM PaperKeyword pk
+        JOIN pk.paper p
+        WHERE pk.keyword.domain IN :domains 
+          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE 
+          AND p.journal IS NOT NULL 
+          AND p.journal != ''
+        GROUP BY p.journal
+        ORDER BY COUNT(p) DESC
+        """)
+    List<Object[]> findTopJournalsByDomains(@Param("domains") java.util.Collection<String> domains, Pageable pageable);
+
+    @Query("""
+        SELECT pk2.keyword.term, COUNT(pk2.id), AVG(COALESCE(pk2.keyword.trendScore, 0))
+        FROM PaperKeyword pk1
+        JOIN PaperKeyword pk2 ON pk1.paper.id = pk2.paper.id
+        WHERE pk1.keyword.keywordId IN :keywordIds 
+          AND pk2.keyword.keywordId NOT IN :keywordIds
+          AND pk1.paper.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        GROUP BY pk2.keyword.term
+        ORDER BY COUNT(pk2.id) DESC
+        """)
+    List<Object[]> findKeywordCoOccurrence(@Param("keywordIds") java.util.Collection<Long> keywordIds, Pageable pageable);
 }

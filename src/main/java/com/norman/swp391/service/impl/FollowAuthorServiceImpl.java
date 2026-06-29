@@ -11,6 +11,7 @@ import com.norman.swp391.mapper.AuthorMapper;
 import com.norman.swp391.repository.AuthorRepository;
 import com.norman.swp391.repository.FollowAuthorRepository;
 import com.norman.swp391.repository.UserRepository;
+import com.norman.swp391.repository.PaperAuthorRepository;
 import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.FollowAuthorService;
 import java.time.LocalDateTime;
@@ -27,6 +28,7 @@ public class FollowAuthorServiceImpl implements FollowAuthorService {
     private final AuthorRepository authorRepository;
     private final UserRepository userRepository;
     private final AppProperties appProperties;
+    private final PaperAuthorRepository paperAuthorRepository;
  
     @Override
     @Transactional
@@ -65,8 +67,25 @@ public class FollowAuthorServiceImpl implements FollowAuthorService {
         Long userId = requireUserId();
         return followAuthorRepository.findByUserId(userId).stream()
                 .map(FollowAuthor::getAuthor)
-                .map(AuthorMapper::toResponse)
+                .map(author -> {
+                    AuthorResponse response = AuthorMapper.toResponse(author);
+                    if (response != null) {
+                        int paperCount = (int) paperAuthorRepository.countByAuthorId(author.getId());
+                        int citations = author.getCitationCount();
+                        response.setPapers(Math.max(paperCount, 1));
+                        response.setHIndex(estimateHIndex(citations));
+                    }
+                    return response;
+                })
                 .toList();
+    }
+
+    private int estimateHIndex(int citations) {
+        int h = 0;
+        while ((h + 1) * (h + 1) <= citations) {
+            h++;
+        }
+        return Math.max(h, 1);
     }
  
     private Long requireUserId() {

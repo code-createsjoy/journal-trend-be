@@ -84,7 +84,6 @@ public final class HelixDtos {
             int papers,
             int citations,
             int hIndex,
-            double trendScore,
             String openAlexId,
             String source) {}
 
@@ -144,7 +143,7 @@ public final class HelixDtos {
      * Author ngắn.
      */
     public record HelixAuthor(
-            String id, String name, String affiliation, int papers, int citations, int hIndex, double trendScore) {}
+            String id, String name, String affiliation, int papers, int citations, int hIndex) {}
 
     /**
      * Trend topic.

@@ -1,5 +1,7 @@
 package com.norman.swp391.controller.helix;
 
+import com.norman.swp391.dto.response.report.PersonalReportResponse;
+import com.norman.swp391.service.PersonalReportService;
 import com.norman.swp391.service.ReportExportService;
 import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,16 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class HelixReportsController {
 
     private final ReportExportService reportExportService;
+    private final PersonalReportService personalReportService;
+
+    @GetMapping("/personal")
+    public PersonalReportResponse getPersonalReport() {
+        Long userId = com.norman.swp391.security.SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new com.norman.swp391.exception.BadRequestException("Not authenticated");
+        }
+        return personalReportService.generatePersonalReport(userId);
+    }
 
     @GetMapping(value = "/topic-trends.csv", produces = "text/csv")
 /**
