@@ -22,7 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @RestController
 @RequestMapping("/api/reports")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
+@PreAuthorize("hasAnyRole('STUDENT', 'LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
 public class HelixReportsController {
 
     private final ReportExportService reportExportService;
