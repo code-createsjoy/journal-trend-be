@@ -2,6 +2,7 @@ package com.norman.swp391.controller.helix;
 
 import com.norman.swp391.dto.helix.HelixDtos.HelixCitationNode;
 import com.norman.swp391.dto.helix.HelixDtos.HelixPaper;
+import com.norman.swp391.dto.helix.HelixDtos.HelixPaperGraph;
 import com.norman.swp391.dto.helix.HelixDtos.HelixReferenceNode;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.service.PaperReferenceService;
@@ -78,5 +79,26 @@ public class HelixPapersController {
             @RequestParam(required = false) Integer yearTo,
             @RequestParam(defaultValue = "20") int limit) {
         return paperReferenceService.getCitations(id, sort, yearFrom, yearTo, Math.min(limit, 100));
+    }
+
+    /**
+     * Gộp References + Citations vào 1 response cho paper detail page.
+     * Cả 2 tối đa 50 items.
+     *
+     * @param refLimit  Số references tối đa (default 50, max 50)
+     * @param citLimit  Số citations tối đa (default 50, max 50)
+     * @param sort      Sort citations: "citations" (default) hoặc "recent"
+     * @param yearFrom  Lọc citations từ năm (optional)
+     * @param yearTo    Lọc citations đến năm (optional)
+     */
+    @GetMapping("/{id}/graph")
+    public HelixPaperGraph getPaperGraph(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "50") int refLimit,
+            @RequestParam(defaultValue = "50") int citLimit,
+            @RequestParam(defaultValue = "citations") String sort,
+            @RequestParam(required = false) Integer yearFrom,
+            @RequestParam(required = false) Integer yearTo) {
+        return paperReferenceService.getPaperGraph(id, Math.min(refLimit, 50), Math.min(citLimit, 50), sort, yearFrom, yearTo);
     }
 }

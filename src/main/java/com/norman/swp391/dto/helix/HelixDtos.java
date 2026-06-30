@@ -276,4 +276,11 @@ public final class HelixDtos {
             Integer citations,
             String localPaperId,
             boolean existsLocally) {}
+
+    /**
+     * Gộp References + Citations vào 1 response cho paper detail page.
+     */
+    public record HelixPaperGraph(
+            List<HelixReferenceNode> references,
+            List<HelixCitationNode> citations) {}
 }
