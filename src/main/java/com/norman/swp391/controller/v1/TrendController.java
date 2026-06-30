@@ -7,6 +7,7 @@ import com.norman.swp391.dto.response.keyword.TrendingTopicResponse;
 import com.norman.swp391.service.FutureTrendForecastService;
 import com.norman.swp391.service.KeywordTrendService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,7 +38,9 @@ public class TrendController {
 
     /**
      * Danh sách top keyword có tiềm năng cao nhất (mặc định 10).
+     * Student không có quyền truy cập.
      */
+    @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @GetMapping("/forecast")
     public ApiResponse<List<ForecastListResponse>> getTopForecasts(
             @RequestParam(defaultValue = "10") int limit) {
@@ -46,7 +49,9 @@ public class TrendController {
 
     /**
      * Chi tiết dự báo 1 keyword kèm lịch sử + 6 tháng tới.
+     * Student không có quyền truy cập.
      */
+    @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @GetMapping("/forecast/{keywordId}")
     public ApiResponse<ForecastDetailResponse> getForecastDetail(
             @PathVariable Long keywordId) {
@@ -55,8 +60,9 @@ public class TrendController {
 
     /**
      * Chạy lại job dự báo hot topic theo yêu cầu (nút "Run Forecast" trên UI).
-     * Mở cho mọi role thay vì chỉ admin.
+     * Student không có quyền truy cập.
      */
+    @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @PostMapping("/forecast/run")
     public ApiResponse<List<ForecastListResponse>> runForecast(
             @RequestParam(defaultValue = "10") int limit) {
