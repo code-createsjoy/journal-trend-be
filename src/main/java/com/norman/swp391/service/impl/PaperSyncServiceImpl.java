@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.CacheManager;
@@ -207,9 +208,15 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 enabledSources.add("OpenAlex");
             }
 
-            // [Fix #8] DOI Pre-Filter — load known identifiers ONCE at sync start
-            Set<String> knownDois = new HashSet<>(paperRepository.findAllDois());
-            Set<String> knownSourceIds = new HashSet<>(paperRepository.findAllSourceIdentifiers());
+            // [Fix #8] DOI Pre-Filter — load known identifiers ONCE at sync start, normalize to lowercase for consistent matching
+            Set<String> knownDois = paperRepository.findAllDois().stream()
+                    .filter(StringUtils::hasText)
+                    .map(d -> d.toLowerCase().trim())
+                    .collect(Collectors.toCollection(HashSet::new));
+            Set<String> knownSourceIds = paperRepository.findAllSourceIdentifiers().stream()
+                    .filter(StringUtils::hasText)
+                    .map(s -> s.toLowerCase().trim())
+                    .collect(Collectors.toCollection(HashSet::new));
             log.info("[SYNC] Loaded {} known DOIs + {} known source IDs for pre-filtering",
                     knownDois.size(), knownSourceIds.size());
 
@@ -857,7 +864,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
                     if (author != null && author.getId() != null) {
                         if (!existingAuthorIds.contains(author.getId())) {
-                            paperAuthorsToSave.add(PaperAuthor.builder().paper(paper).author(author).build());
+                            paperAuthorsToSave.add(PaperAuthor.builder().paper(paper).author(author).authorPosition(info.authorPosition()).build());
                             existingAuthorIds.add(author.getId());
                         }
                     }

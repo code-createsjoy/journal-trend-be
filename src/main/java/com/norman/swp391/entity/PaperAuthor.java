@@ -1,4 +1,5 @@
 package com.norman.swp391.entity;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -34,4 +35,7 @@ public class PaperAuthor {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "author_id", nullable = false)
     private Author author;
+
+    @Column(name = "author_position", length = 10)
+    private String authorPosition; // "first", "middle", "last"
 }

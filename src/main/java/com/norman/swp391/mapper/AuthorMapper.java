@@ -2,6 +2,7 @@ package com.norman.swp391.mapper;
 
 import com.norman.swp391.dto.response.author.AuthorResponse;
 import com.norman.swp391.entity.Author;
+import com.norman.swp391.entity.PaperAuthor;
 import java.util.List;
 import lombok.experimental.UtilityClass;
 
@@ -33,6 +34,13 @@ public class AuthorMapper {
  */
     public static List<AuthorResponse> toResponseList(List<Author> authors) {
         return authors.stream().map(AuthorMapper::toResponse).toList();
+    }
+
+    public static AuthorResponse toResponseWithPosition(PaperAuthor paperAuthor) {
+        if (paperAuthor == null) return null;
+        AuthorResponse r = toResponse(paperAuthor.getAuthor());
+        if (r != null) r.setAuthorPosition(paperAuthor.getAuthorPosition());
+        return r;
     }
 }
 

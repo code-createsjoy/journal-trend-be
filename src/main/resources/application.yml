@@ -85,6 +85,31 @@ app:
     http-read-timeout-ms: ${SYNC_HTTP_READ_TIMEOUT_MS:30000}
     open-alex-retry-attempts: ${SYNC_OPENALEX_RETRIES:3}
     max-follow-keywords-per-user: ${MAX_FOLLOW_KEYWORDS:20}
+    allowed-keyword-domains:
+      - Computer Science
+      - Mathematics
+      - Engineering
+      - Artificial Intelligence
+      - Machine Learning
+      - Computer Vision and Pattern Recognition
+      - Natural Language Processing
+      - Human-Computer Interaction
+      - Computer Networks and Communications
+      - Software Engineering
+      - Information Systems
+      - Database Management
+      - Theoretical Computer Science
+      - Data Mining and Knowledge Discovery
+      - Computer Security and Cryptography
+      - Robotics
+      - Computer Graphics and Computer-Aided Design
+      - Hardware and Architecture
+      - Statistics and Probability
+      - Applied Mathematics
+      - Computational Mathematics
+      - Information Science
+      - Electrical and Electronic Engineering
+      - Control and Systems Engineering
     max-follow-journals-per-user: ${MAX_FOLLOW_JOURNALS:10}
     max-follow-authors-per-user: ${MAX_FOLLOW_AUTHORS:20}
     max-bookmark-papers-per-user: ${MAX_BOOKMARK_PAPERS:200}
