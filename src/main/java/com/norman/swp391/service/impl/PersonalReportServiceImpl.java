@@ -14,6 +14,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.YearMonth;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -99,14 +100,42 @@ public class PersonalReportServiceImpl implements PersonalReportService {
     }
 
     private TrendsSection buildTrendsSection(List<Long> keywordIds, Set<String> domains) {
-        // Line Chart: Xu hướng từ khóa theo năm
+        // Giới hạn top 10 keyword có nhiều paper nhất trong danh sách follow
+        List<Long> top10KeywordIds = keywordIds;
+        if (keywordIds.size() > 5) {
+            List<Object[]> topRows = paperKeywordRepository.findTopKeywordsByPaperCount(
+                    PaperStatus.ACTIVE, PaperReviewStatus.NONE,
+                    org.springframework.data.domain.PageRequest.of(0, 5));
+            Set<Long> topIdSet = topRows.stream()
+                    .map(r -> (Long) r[0])
+                    .filter(keywordIds::contains)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            // Bổ sung từ keywordIds gốc nếu chưa đủ 5
+            for (Long id : keywordIds) {
+                if (topIdSet.size() >= 5) break;
+                topIdSet.add(id);
+            }
+            top10KeywordIds = new ArrayList<>(topIdSet);
+        }
+
+        // Tính 3 tháng gần nhất (dạng YYYYMM) tính từ thời điểm hiện tại
+        YearMonth current = YearMonth.now();
+        List<Integer> yearMonths = new ArrayList<>();
+        for (int i = 2; i >= 0; i--) {
+            YearMonth ym = current.minusMonths(i);
+            yearMonths.add(ym.getYear() * 100 + ym.getMonthValue());
+        }
+
+        // Line Chart: Xu hướng từ khóa theo tháng (3 tháng gần nhất, dữ liệu thật từ DB)
         List<KeywordTrendPoint> lineChart = new ArrayList<>();
-        List<Object[]> yearlyRows = paperKeywordRepository.countYearlyPapersByKeywordIds(keywordIds);
-        for (Object[] row : yearlyRows) {
+        List<Object[]> monthlyRows = paperKeywordRepository.countMonthlyPapersByKeywordIds(
+                top10KeywordIds, yearMonths);
+        for (Object[] row : monthlyRows) {
             lineChart.add(KeywordTrendPoint.builder()
                     .term((String) row[0])
                     .year((Integer) row[1])
-                    .paperCount((Long) row[2])
+                    .month((Integer) row[2])
+                    .paperCount((Long) row[3])
                     .build());
         }
 
