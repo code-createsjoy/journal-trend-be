@@ -142,15 +142,8 @@ public class AppProperties {
         private int earlyStopConsecutiveEmptyPages = 3;
         /** Cap keywords linked per paper during ingest. 0 = no limit. */
         private int maxKeywordsPerPaper = 10;
-        /** Domains to allow when linking keywords to papers (empty list = allow all). */
-        private List<String> allowedKeywordDomains = new ArrayList<>(List.of(
-                "Computer Science",
-                "Artificial Intelligence",
-                "Machine Learning",
-                "Mathematics",
-                "Engineering",
-                "Statistics and Probability",
-                "Information Science"));
+        /** Domains to allow when linking keywords to papers (empty list = allow all). Configured in application.yml. */
+        private List<String> allowedKeywordDomains = new ArrayList<>();
 
         /** Cron cho job dự báo hot topic — mặc định 4AM ngày 1 hàng tháng. */
         private String forecastCron = "0 0 4 1 * *";

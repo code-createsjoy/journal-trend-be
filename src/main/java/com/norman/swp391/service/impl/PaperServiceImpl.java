@@ -19,8 +19,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.norman.swp391.entity.Author;
-import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.PaperAuthor;
 import com.norman.swp391.entity.PaperKeyword;
 import java.util.Collections;
@@ -78,34 +76,28 @@ public class PaperServiceImpl implements PaperService {
         List<Paper> papers = page.getContent();
         List<Long> paperIds = papers.stream().map(Paper::getId).toList();
         
-        Map<Long, List<Author>> authorsByPaperId = loadAuthorsForPapers(paperIds);
-        Map<Long, List<Keyword>> keywordsByPaperId = loadKeywordsForPapers(paperIds);
-        
-        List<PaperDetailResponse> content = papers.stream().map(p -> 
-            PaperMapper.toDetailResponse(p, 
-                keywordsByPaperId.getOrDefault(p.getId(), Collections.emptyList()), 
+        Map<Long, List<PaperAuthor>> authorsByPaperId = loadAuthorsForPapers(paperIds);
+        Map<Long, List<PaperKeyword>> keywordsByPaperId = loadKeywordsForPapers(paperIds);
+
+        List<PaperDetailResponse> content = papers.stream().map(p ->
+            PaperMapper.toDetailResponseFromRelations(p,
+                keywordsByPaperId.getOrDefault(p.getId(), Collections.emptyList()),
                 authorsByPaperId.getOrDefault(p.getId(), Collections.emptyList()))
         ).toList();
-        
+
         return PageResponse.from(page, content);
     }
 
-    private Map<Long, List<Author>> loadAuthorsForPapers(List<Long> paperIds) {
+    private Map<Long, List<PaperAuthor>> loadAuthorsForPapers(List<Long> paperIds) {
         if (paperIds.isEmpty()) return Collections.emptyMap();
         return paperAuthorRepository.findByPaperIdInWithAuthor(paperIds).stream()
-                .collect(Collectors.groupingBy(
-                        pa -> pa.getPaper().getId(),
-                        Collectors.mapping(PaperAuthor::getAuthor, Collectors.toList())
-                ));
+                .collect(Collectors.groupingBy(pa -> pa.getPaper().getId()));
     }
 
-    private Map<Long, List<Keyword>> loadKeywordsForPapers(List<Long> paperIds) {
+    private Map<Long, List<PaperKeyword>> loadKeywordsForPapers(List<Long> paperIds) {
         if (paperIds.isEmpty()) return Collections.emptyMap();
         return paperKeywordRepository.findByPaperIdInWithKeyword(paperIds).stream()
-                .collect(Collectors.groupingBy(
-                        pk -> pk.getPaper().getId(),
-                        Collectors.mapping(PaperKeyword::getKeyword, Collectors.toList())
-                ));
+                .collect(Collectors.groupingBy(pk -> pk.getPaper().getId()));
     }
 
     @Override
@@ -144,12 +136,12 @@ public class PaperServiceImpl implements PaperService {
             return Collections.emptyList();
         }
         List<Long> paperIds = papers.stream().map(Paper::getId).toList();
-        Map<Long, List<Author>> authorsByPaperId = loadAuthorsForPapers(paperIds);
-        Map<Long, List<Keyword>> keywordsByPaperId = loadKeywordsForPapers(paperIds);
-        
-        return papers.stream().map(p -> 
-            PaperMapper.toDetailResponse(p, 
-                keywordsByPaperId.getOrDefault(p.getId(), Collections.emptyList()), 
+        Map<Long, List<PaperAuthor>> authorsByPaperId = loadAuthorsForPapers(paperIds);
+        Map<Long, List<PaperKeyword>> keywordsByPaperId = loadKeywordsForPapers(paperIds);
+
+        return papers.stream().map(p ->
+            PaperMapper.toDetailResponseFromRelations(p,
+                keywordsByPaperId.getOrDefault(p.getId(), Collections.emptyList()),
                 authorsByPaperId.getOrDefault(p.getId(), Collections.emptyList()))
         ).collect(Collectors.toList());
     }

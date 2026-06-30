@@ -166,7 +166,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
             for (YearMonth ym : targetMonths) {
                 Map<Long, PublicationTrend> keywordTrendMap = trendCache.get(ym);
                 PublicationTrend trend = keywordTrendMap != null ? keywordTrendMap.get(keyword.getKeywordId()) : null;
-                if (trend == null || trend.getDeltaPercent().compareTo(threshold) < 0) {
+                if (trend == null || trend.getDeltaPercent() == null || trend.getDeltaPercent().compareTo(threshold) < 0) {
                     isTrending = false;
                     break;
                 }
@@ -186,8 +186,9 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         YearMonth current = YearMonth.now().minusMonths(1);
         int rank = 1;
         
-        // Sort by trend score desc
-        keywords.sort(Comparator.comparing(Keyword::getTrendScore).reversed()
+        // Sort by trend score desc, nulls last
+        keywords.sort(Comparator.comparing(Keyword::getTrendScore,
+                        Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(Keyword::getPaperCount, Comparator.reverseOrder()));
 
         for (Keyword keyword : keywords) {

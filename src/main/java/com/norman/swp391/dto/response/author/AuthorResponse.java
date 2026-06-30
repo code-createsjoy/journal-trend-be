@@ -23,6 +23,7 @@ public class AuthorResponse {
 
     private Integer papers;
     private Integer hIndex;
+    private String authorPosition; // "first", "middle", "last" — only set in paper detail context
 }
 
 

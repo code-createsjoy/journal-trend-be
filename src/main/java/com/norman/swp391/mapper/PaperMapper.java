@@ -93,14 +93,29 @@ public class PaperMapper {
      */
     public static PaperDetailResponse toDetailResponseFromRelations(
             Paper paper, List<PaperKeyword> paperKeywords, List<PaperAuthor> paperAuthors) {
-        List<Keyword> keywords =
-                paperKeywords == null
-                        ? Collections.emptyList()
-                        : paperKeywords.stream().map(PaperKeyword::getKeyword).toList();
-        List<Author> authors =
-                paperAuthors == null
-                        ? Collections.emptyList()
-                        : paperAuthors.stream().map(PaperAuthor::getAuthor).toList();
-        return toDetailResponse(paper, keywords, authors);
+        List<KeywordResponse> keywordResponses = paperKeywords == null
+                ? Collections.emptyList()
+                : paperKeywords.stream().map(pk -> KeywordMapper.toResponse(pk.getKeyword())).toList();
+        List<AuthorResponse> authorResponses = paperAuthors == null
+                ? Collections.emptyList()
+                : paperAuthors.stream().map(AuthorMapper::toResponseWithPosition).toList();
+        return PaperDetailResponse.builder()
+                .id(paper.getId())
+                .title(paper.getTitle())
+                .abstractText(paper.getAbstractText())
+                .publicationDate(paper.getPublicationDate())
+                .citationCount(paper.getCitationCount())
+                .doi(paper.getDoi())
+                .sourceUrl(paper.getSourceUrl())
+                .pdfUrl(paper.getPdfUrl())
+                .openAccess(paper.isOpenAccess())
+                .journal(paper.getJournal())
+                .journalId(paper.getJournalRef() != null ? paper.getJournalRef().getId() : null)
+                .primarySource(paper.getPrimarySource())
+                .status(paper.getStatus())
+                .createdAt(paper.getCreatedAt())
+                .keywords(keywordResponses)
+                .authors(authorResponses)
+                .build();
     }
 }

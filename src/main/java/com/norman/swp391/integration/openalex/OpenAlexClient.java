@@ -240,7 +240,6 @@ public class OpenAlexClient {
     private List<ExternalKeywordInfo> mapOpenAlexKeywords(JsonNode topicsNode, JsonNode conceptsNode) {
         List<ExternalKeywordInfo> keywords = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        String primaryDomain = "General";
 
         if (topicsNode != null && topicsNode.isArray()) {
             List<JsonNode> topicList = StreamSupport.stream(topicsNode.spliterator(), false)
@@ -261,43 +260,24 @@ public class OpenAlexClient {
                     if (!StringUtils.hasText(domain)) {
                         domain = "General";
                     }
-                    if ("General".equals(primaryDomain) && !"General".equals(domain)) {
-                        primaryDomain = domain;
-                    }
                     keywords.add(new ExternalKeywordInfo(term.trim(), domain.trim()));
                 }
             }
         }
 
-        String fallbackDomain = null;
-        double maxConceptScore = -1.0;
+        // Concepts level > 0 không chứa domain thực trong OpenAlex Works API response —
+        // chúng chỉ có display_name/level/score, không có parent hierarchy.
+        // Dùng primaryDomain cho chúng là sai vì paper CS về healthcare sẽ khiến
+        // "Pharmacology", "Surgery" (level 1, Medicine) được gán domain "Computer Science".
+        // → Chỉ giữ level 0 concepts (domain gốc như "Computer Science", "Mathematics").
+        //   Specific keywords đã được lấy từ topics phía trên với subfield đúng.
         if (conceptsNode != null && conceptsNode.isArray()) {
             for (JsonNode node : conceptsNode) {
                 int level = node.path("level").asInt(-1);
-                if (level == 0) {
-                    double score = node.path("score").asDouble(0.0);
-                    if (score > maxConceptScore) {
-                        maxConceptScore = score;
-                        fallbackDomain = textOrNull(node.path("display_name"));
-                    }
-                }
-            }
-        }
-        if ("General".equals(primaryDomain) && StringUtils.hasText(fallbackDomain)) {
-            primaryDomain = fallbackDomain;
-        }
-
-        if (conceptsNode != null && conceptsNode.isArray()) {
-            List<JsonNode> conceptList = StreamSupport.stream(conceptsNode.spliterator(), false)
-                    .map(JsonNode.class::cast)
-                    .sorted(Comparator.comparingDouble((JsonNode node) -> node.path("score").asDouble(0)).reversed())
-                    .toList();
-            for (JsonNode node : conceptList) {
+                if (level != 0) continue;
                 String term = textOrNull(node.path("display_name"));
                 if (StringUtils.hasText(term) && seen.add(term.toLowerCase().trim())) {
-                    int level = node.path("level").asInt(-1);
-                    String domain = (level == 0) ? term : primaryDomain;
-                    keywords.add(new ExternalKeywordInfo(term.trim(), domain.trim()));
+                    keywords.add(new ExternalKeywordInfo(term.trim(), term.trim()));
                 }
             }
         }
@@ -324,7 +304,8 @@ public class OpenAlexClient {
             if (institutions.isArray() && !institutions.isEmpty()) {
                 affiliation = textOrNull(institutions.get(0).path("display_name"));
             }
-            authors.add(new ExternalAuthorInfo(name, "OPENALEX", openAlexId, affiliation != null ? affiliation : ""));
+            String position = textOrNull(authorship.path("author_position")); // "first", "middle", "last"
+            authors.add(new ExternalAuthorInfo(name, "OPENALEX", openAlexId, affiliation != null ? affiliation : "", position));
         });
         return authors;
     }
@@ -347,7 +328,7 @@ public class OpenAlexClient {
         int attempts = Math.max(1, appProperties.getSync().getOpenAlexRetryAttempts());
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
-                JsonNode response = externalApiRestClient.get().uri(url).retrieve().body(JsonNode.class);
+                JsonNode response = externalApiRestClient.get().uri(url != null ? url : "").retrieve().body(JsonNode.class);
                 // Giãn cách 150ms sau mỗi request thành công để tránh chạm hạn mức rate limit
                 // (10 req/s) của OpenAlex
                 sleepQuietly(150L);
@@ -359,11 +340,12 @@ public class OpenAlexClient {
                             "OpenAlex quota exhausted. Synchronization stopped. Retry after quota reset.", ex);
                 }
                 long sleepMs = 2000L * attempt; // Back off: 2s, 4s, 6s...
-                if (ex.getResponseHeaders() != null) {
-                    String retryAfter = ex.getResponseHeaders().getFirst("Retry-After");
-                    if (StringUtils.hasText(retryAfter)) {
+                var headers = ex.getResponseHeaders();
+                if (headers != null) {
+                    String retryAfter = headers.getFirst("Retry-After");
+                    if (retryAfter != null && !retryAfter.isBlank()) {
                         try {
-                            sleepMs = Math.max(1, Long.parseLong(retryAfter.trim())) * 1000L;
+                            sleepMs = Math.max(1, Long.parseLong(retryAfter.strip())) * 1000L;
                         } catch (NumberFormatException nfe) {
                             // ignore, fallback
                         }
@@ -412,16 +394,6 @@ public class OpenAlexClient {
         if (StringUtils.hasText(appProperties.getOpenalex().getApiKey())) {
             builder.queryParam("api_key", appProperties.getOpenalex().getApiKey());
         }
-    }
-
-    /**
-     * Xử lý nghiệp vụ: normalizeWorkId.
-     */
-    private String normalizeWorkId(String id) {
-        if (!StringUtils.hasText(id)) {
-            throw new BadRequestException("OpenAlex work id is required");
-        }
-        return toOpenAlexWorkId(id);
     }
 
     /**
