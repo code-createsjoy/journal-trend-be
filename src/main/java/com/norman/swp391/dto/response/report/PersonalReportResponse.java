@@ -57,6 +57,7 @@ public class PersonalReportResponse {
     public static class KeywordTrendPoint {
         private String term;
         private Integer year;
+        private Integer month;
         private Long paperCount;
     }
 

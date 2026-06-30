@@ -107,14 +107,29 @@ public interface PaperKeywordRepository extends JpaRepository<PaperKeyword, Long
         SELECT pk.keyword.term, YEAR(p.publicationDate), COUNT(p)
         FROM PaperKeyword pk
         JOIN pk.paper p
-        WHERE pk.keyword.keywordId IN :keywordIds 
-          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE 
-          AND p.publicationDate IS NOT NULL 
+        WHERE pk.keyword.keywordId IN :keywordIds
+          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+          AND p.publicationDate IS NOT NULL
           AND YEAR(p.publicationDate) >= 2020
         GROUP BY pk.keyword.term, YEAR(p.publicationDate)
         ORDER BY pk.keyword.term, YEAR(p.publicationDate)
         """)
     List<Object[]> countYearlyPapersByKeywordIds(@Param("keywordIds") java.util.Collection<Long> keywordIds);
+
+    @Query("""
+        SELECT pk.keyword.term, YEAR(p.publicationDate), MONTH(p.publicationDate), COUNT(DISTINCT p)
+        FROM PaperKeyword pk
+        JOIN pk.paper p
+        WHERE pk.keyword.keywordId IN :keywordIds
+          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+          AND p.publicationDate IS NOT NULL
+          AND (YEAR(p.publicationDate) * 100 + MONTH(p.publicationDate)) IN :yearMonths
+        GROUP BY pk.keyword.term, YEAR(p.publicationDate), MONTH(p.publicationDate)
+        ORDER BY pk.keyword.term, YEAR(p.publicationDate), MONTH(p.publicationDate)
+        """)
+    List<Object[]> countMonthlyPapersByKeywordIds(
+            @Param("keywordIds") java.util.Collection<Long> keywordIds,
+            @Param("yearMonths") java.util.Collection<Integer> yearMonths);
 
     @Query("""
         SELECT p.journal, COUNT(p)
