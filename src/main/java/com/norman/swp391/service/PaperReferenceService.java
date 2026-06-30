@@ -1,6 +1,7 @@
 package com.norman.swp391.service;
 
 import com.norman.swp391.dto.helix.HelixDtos.HelixCitationNode;
+import com.norman.swp391.dto.helix.HelixDtos.HelixPaperGraph;
 import com.norman.swp391.dto.helix.HelixDtos.HelixReferenceNode;
 import java.util.List;
 
@@ -31,4 +32,16 @@ public interface PaperReferenceService {
      * @return Danh sách HelixCitationNode
      */
     List<HelixCitationNode> getCitations(Long paperId, String sort, Integer yearFrom, Integer yearTo, int limit);
+
+    /**
+     * Gộp references và citations vào 1 response duy nhất.
+     *
+     * @param paperId    ID paper trong DB local
+     * @param refLimit   Số references tối đa (default 50)
+     * @param citLimit   Số citations tối đa (default 20)
+     * @param sort       Sort cho citations: "citations" hoặc "recent"
+     * @param yearFrom   Lọc citation từ năm (nullable)
+     * @param yearTo     Lọc citation đến năm (nullable)
+     */
+    HelixPaperGraph getPaperGraph(Long paperId, int refLimit, int citLimit, String sort, Integer yearFrom, Integer yearTo);
 }

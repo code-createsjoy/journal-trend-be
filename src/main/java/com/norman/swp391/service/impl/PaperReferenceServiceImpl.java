@@ -1,19 +1,23 @@
 package com.norman.swp391.service.impl;
 
 import com.norman.swp391.dto.helix.HelixDtos.HelixCitationNode;
+import com.norman.swp391.dto.helix.HelixDtos.HelixPaperGraph;
 import com.norman.swp391.dto.helix.HelixDtos.HelixReferenceNode;
 import com.norman.swp391.entity.Paper;
+import com.norman.swp391.entity.PaperCitation;
 import com.norman.swp391.entity.PaperReference;
 import com.norman.swp391.entity.ReferenceMetadata;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.integration.model.ExternalPaperMetadata;
 import com.norman.swp391.integration.openalex.OpenAlexClient;
+import com.norman.swp391.repository.PaperCitationRepository;
 import com.norman.swp391.repository.PaperReferenceRepository;
 import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.ReferenceMetadataRepository;
 import com.norman.swp391.service.PaperReferenceService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -48,6 +52,7 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
 
     private final PaperRepository paperRepository;
     private final PaperReferenceRepository paperReferenceRepository;
+    private final PaperCitationRepository paperCitationRepository;
     private final ReferenceMetadataRepository referenceMetadataRepository;
     private final OpenAlexClient openAlexClient;
     private final PlatformTransactionManager transactionManager;
@@ -204,6 +209,13 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
         return result;
     }
 
+    @Override
+    public HelixPaperGraph getPaperGraph(Long paperId, int refLimit, int citLimit, String sort, Integer yearFrom, Integer yearTo) {
+        List<HelixReferenceNode> references = getReferences(paperId, refLimit);
+        List<HelixCitationNode> citations = getCitations(paperId, sort, yearFrom, yearTo, Math.min(citLimit, 50));
+        return new HelixPaperGraph(references, citations);
+    }
+
     /**
      * Fetch referenced_works từ OpenAlex và lưu vào paper_references.
      */
@@ -271,57 +283,210 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
             return List.of();
         }
 
-        // Map sort parameter to OpenAlex sort format
-        String openAlexSort;
-        if ("recent".equalsIgnoreCase(sort)) {
-            openAlexSort = "publication_date:desc";
+        // 1. Check cache freshness (1-day TTL)
+        LocalDateTime oneDayAgo = LocalDateTime.now().minusDays(1);
+        boolean cacheIsFresh = paperCitationRepository.existsByPaperIdAndFetchedAtAfter(paperId, oneDayAgo);
+
+        List<PaperCitation> cachedCitations;
+        if (cacheIsFresh) {
+            cachedCitations = paperCitationRepository.findByPaperId(paperId);
         } else {
-            // Default: citation count descending
-            openAlexSort = "cited_by_count:desc";
+            // Fetch từ OpenAlex (luôn sort by cited_by_count để cache chất lượng nhất)
+            cachedCitations = fetchAndSaveCitations(paper);
         }
 
+        if (cachedCitations.isEmpty()) {
+            return List.of();
+        }
+
+        // 2. Batch lookup metadata từ reference_metadata cache (7-day TTL)
+        List<String> citingIds = cachedCitations.stream()
+                .map(PaperCitation::getCitingOpenAlexId)
+                .toList();
+
+        LocalDateTime staleThreshold = LocalDateTime.now().minusDays(7);
+        Map<String, ReferenceMetadata> metaMap = new HashMap<>();
+        List<ReferenceMetadata> cachedMeta =
+                referenceMetadataRepository.findByOpenAlexIdInAndFetchedAtAfter(citingIds, staleThreshold);
+        for (ReferenceMetadata rm : cachedMeta) {
+            metaMap.put(rm.getOpenAlexId(), rm);
+        }
+
+        // 3. Batch fetch metadata cho cache miss
+        List<String> missingIds = citingIds.stream()
+                .filter(id -> !metaMap.containsKey(id))
+                .distinct()
+                .collect(Collectors.toList());
+        if (!missingIds.isEmpty()) {
+            log.info("[CIT] Fetching metadata for {} uncached citing works from OpenAlex", missingIds.size());
+            try {
+                List<ExternalPaperMetadata> fetched = openAlexClient.fetchWorksByIds(missingIds);
+                Map<String, ExternalPaperMetadata> fetchedMap = new HashMap<>();
+                for (ExternalPaperMetadata meta : fetched) {
+                    if (StringUtils.hasText(meta.sourceIdentifier())) {
+                        fetchedMap.put(meta.sourceIdentifier(), meta);
+                    }
+                }
+                List<ReferenceMetadata> existingMeta = referenceMetadataRepository.findByOpenAlexIdIn(missingIds);
+                Map<String, ReferenceMetadata> existingMetaMap = existingMeta.stream()
+                        .collect(Collectors.toMap(ReferenceMetadata::getOpenAlexId, rm -> rm, (a, b) -> a));
+                List<ReferenceMetadata> toSave = new ArrayList<>();
+                LocalDateTime now = LocalDateTime.now();
+                for (String missingId : missingIds) {
+                    ExternalPaperMetadata meta = fetchedMap.get(missingId);
+                    ReferenceMetadata existing = existingMetaMap.get(missingId);
+                    if (existing != null) {
+                        existing.setTitle(meta != null ? meta.title() : existing.getTitle());
+                        existing.setPublicationYear(meta != null && meta.publicationDate() != null
+                                ? meta.publicationDate().getYear() : existing.getPublicationYear());
+                        existing.setDoi(meta != null ? meta.doi() : existing.getDoi());
+                        existing.setCitationCount(meta != null ? meta.citationCount() : existing.getCitationCount());
+                        existing.setFetchedAt(now);
+                        toSave.add(existing);
+                        metaMap.put(missingId, existing);
+                    } else {
+                        ReferenceMetadata rm = ReferenceMetadata.builder()
+                                .openAlexId(missingId)
+                                .title(meta != null ? meta.title() : null)
+                                .publicationYear(meta != null && meta.publicationDate() != null
+                                        ? meta.publicationDate().getYear() : null)
+                                .doi(meta != null ? meta.doi() : null)
+                                .citationCount(meta != null ? meta.citationCount() : null)
+                                .fetchedAt(now)
+                                .build();
+                        toSave.add(rm);
+                        metaMap.put(missingId, rm);
+                    }
+                }
+                if (!toSave.isEmpty()) {
+                    try {
+                        getRequiresNewTemplate().executeWithoutResult(status ->
+                                referenceMetadataRepository.saveAll(toSave));
+                    } catch (Exception ex) {
+                        log.warn("[CIT] Error saving citation metadata: {}", ex.getMessage());
+                        referenceMetadataRepository.findByOpenAlexIdIn(missingIds)
+                                .forEach(rm -> metaMap.put(rm.getOpenAlexId(), rm));
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("[CIT] Failed to fetch citation metadata from OpenAlex: {}", ex.getMessage());
+            }
+        }
+
+        // 4. Cross-reference với local papers
+        Map<String, Long> localPaperMap = new HashMap<>();
+        List<Paper> localPapers = paperRepository.findBySourceTypeAndSourceIdentifierIn("OPENALEX", citingIds);
+        for (Paper p : localPapers) {
+            if (StringUtils.hasText(p.getSourceIdentifier())) {
+                localPaperMap.put(p.getSourceIdentifier(), p.getId());
+            }
+        }
+
+        // 5. Build nodes, áp dụng year filter
+        List<HelixCitationNode> result = new ArrayList<>();
+        for (String citingId : citingIds) {
+            ReferenceMetadata rm = metaMap.get(citingId);
+            // Khi có year filter, loại bỏ record không có năm thay vì cho qua
+            if (yearFrom != null || yearTo != null) {
+                if (rm == null || rm.getPublicationYear() == null) continue;
+                if (yearFrom != null && rm.getPublicationYear() < yearFrom) continue;
+                if (yearTo != null && rm.getPublicationYear() > yearTo) continue;
+            }
+            Long localId = localPaperMap.get(citingId);
+            result.add(new HelixCitationNode(
+                    citingId,
+                    rm != null ? rm.getTitle() : null,
+                    rm != null ? rm.getPublicationYear() : null,
+                    rm != null ? rm.getDoi() : null,
+                    rm != null ? rm.getCitationCount() : null,
+                    localId != null ? localId.toString() : null,
+                    localId != null
+            ));
+        }
+
+        // 6. Sort in-memory
+        Comparator<HelixCitationNode> comparator = "recent".equalsIgnoreCase(sort)
+                ? Comparator.comparingInt((HelixCitationNode n) -> n.year() != null ? n.year() : 0).reversed()
+                : Comparator.comparingInt((HelixCitationNode n) -> n.citations() != null ? n.citations() : 0).reversed();
+        result.sort(comparator);
+
+        return result.size() > limit ? result.subList(0, limit) : result;
+    }
+
+    /**
+     * Fetch citing works từ OpenAlex, xóa cache cũ và lưu mới vào paper_citations.
+     * Luôn fetch sort by cited_by_count để cache 50 papers có citation cao nhất.
+     */
+    private List<PaperCitation> fetchAndSaveCitations(Paper paper) {
         try {
             List<ExternalPaperMetadata> citingWorks = openAlexClient.fetchCitingWorks(
-                    paper.getSourceIdentifier(), openAlexSort, yearFrom, yearTo, limit);
+                    paper.getSourceIdentifier(), "cited_by_count:desc", null, null, 50);
 
             if (citingWorks.isEmpty()) {
                 return List.of();
             }
 
-            // Cross-reference with local papers
-            List<String> citingIds = citingWorks.stream()
-                    .map(ExternalPaperMetadata::sourceIdentifier)
-                    .filter(StringUtils::hasText)
-                    .toList();
+            LocalDateTime now = LocalDateTime.now();
+            List<PaperCitation> toSave = citingWorks.stream()
+                    .filter(m -> StringUtils.hasText(m.sourceIdentifier()))
+                    .map(m -> PaperCitation.builder()
+                            .paperId(paper.getId())
+                            .citingOpenAlexId(m.sourceIdentifier())
+                            .fetchedAt(now)
+                            .build())
+                    .collect(Collectors.toList());
 
-            Map<String, Long> localPaperMap = new HashMap<>();
-            if (!citingIds.isEmpty()) {
-                List<Paper> localPapers = paperRepository.findBySourceTypeAndSourceIdentifierIn("OPENALEX", citingIds);
-                for (Paper p : localPapers) {
-                    if (StringUtils.hasText(p.getSourceIdentifier())) {
-                        localPaperMap.put(p.getSourceIdentifier(), p.getId());
-                    }
-                }
+            try {
+                List<PaperCitation> saved = getRequiresNewTemplate().execute(status -> {
+                    paperCitationRepository.deleteByPaperId(paper.getId());
+                    return paperCitationRepository.saveAll(toSave);
+                });
+                cacheMetadataForWorks(citingWorks);
+                return saved != null ? saved : toSave;
+            } catch (Exception ex) {
+                log.warn("[CIT] Error saving citations for paper {}: {}", paper.getId(), ex.getMessage());
+                return paperCitationRepository.findByPaperId(paper.getId());
             }
-
-            // Build response
-            List<HelixCitationNode> result = new ArrayList<>();
-            for (ExternalPaperMetadata meta : citingWorks) {
-                Long localId = localPaperMap.get(meta.sourceIdentifier());
-                result.add(new HelixCitationNode(
-                        meta.sourceIdentifier(),
-                        meta.title(),
-                        meta.publicationDate() != null ? meta.publicationDate().getYear() : null,
-                        meta.doi(),
-                        meta.citationCount(),
-                        localId != null ? localId.toString() : null,
-                        localId != null
-                ));
-            }
-            return result;
         } catch (Exception ex) {
             log.warn("[CIT] Failed to fetch citations for paper {}: {}", paper.getId(), ex.getMessage());
-            return List.of();
+            return paperCitationRepository.findByPaperId(paper.getId());
+        }
+    }
+
+    /**
+     * Lưu hoặc cập nhật metadata của citing works vào reference_metadata để tái sử dụng.
+     */
+    private void cacheMetadataForWorks(List<ExternalPaperMetadata> works) {
+        if (works.isEmpty()) return;
+        List<String> ids = works.stream()
+                .map(ExternalPaperMetadata::sourceIdentifier)
+                .filter(StringUtils::hasText)
+                .toList();
+        if (ids.isEmpty()) return;
+
+        Map<String, ExternalPaperMetadata> worksMap = works.stream()
+                .filter(m -> StringUtils.hasText(m.sourceIdentifier()))
+                .collect(Collectors.toMap(ExternalPaperMetadata::sourceIdentifier, m -> m, (a, b) -> a));
+        Map<String, ReferenceMetadata> existingMap = referenceMetadataRepository.findByOpenAlexIdIn(ids)
+                .stream().collect(Collectors.toMap(ReferenceMetadata::getOpenAlexId, rm -> rm, (a, b) -> a));
+
+        LocalDateTime now = LocalDateTime.now();
+        List<ReferenceMetadata> toSave = new ArrayList<>();
+        for (String id : ids) {
+            ExternalPaperMetadata meta = worksMap.get(id);
+            ReferenceMetadata rm = existingMap.getOrDefault(id, ReferenceMetadata.builder().openAlexId(id).build());
+            rm.setTitle(meta.title());
+            rm.setPublicationYear(meta.publicationDate() != null ? meta.publicationDate().getYear() : rm.getPublicationYear());
+            rm.setDoi(meta.doi());
+            rm.setCitationCount(meta.citationCount());
+            rm.setFetchedAt(now);
+            toSave.add(rm);
+        }
+
+        try {
+            getRequiresNewTemplate().executeWithoutResult(status -> referenceMetadataRepository.saveAll(toSave));
+        } catch (Exception ex) {
+            log.warn("[CIT] Error caching metadata for citing works: {}", ex.getMessage());
         }
     }
 }
