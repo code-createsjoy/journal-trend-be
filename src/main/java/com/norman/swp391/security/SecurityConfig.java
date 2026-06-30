@@ -60,7 +60,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/analytics/**", "/api/papers/**", "/api/v1/papers/**", "/api/topics/**", "/api/authors/**", "/api/journals/**", "/api/v1/dashboard/**", "/api/v1/trends/**")
                         .permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/trends/forecast/run").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api-docs/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/super-admin/**").hasRole("SUPER_ADMIN")
