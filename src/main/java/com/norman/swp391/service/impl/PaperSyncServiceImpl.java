@@ -17,6 +17,7 @@ import com.norman.swp391.entity.enums.PaperReviewStatus;
 import com.norman.swp391.entity.enums.PaperStatus;
 import com.norman.swp391.entity.enums.SyncStatus;
 import com.norman.swp391.integration.model.ExternalAuthorInfo;
+import com.norman.swp391.integration.model.ExternalAuthorProfile;
 import com.norman.swp391.integration.model.ExternalKeywordInfo;
 import com.norman.swp391.integration.model.ExternalPaperMetadata;
 import com.norman.swp391.integration.openalex.OpenAlexClient;
@@ -414,6 +415,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                     () -> notificationService.notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords()));
             runPostSyncTask("notifyNewPapers",
                     () -> notificationService.notifyNewPapersForSubscriptions(newPaperIds));
+            runPostSyncTask("enrichAuthorStats", () -> enrichAuthorStats(50)); // chỉ xử lý authors mới từ sync này
             runPostSyncTask("evictDashboardCache", () -> {
                 var cache = cacheManager.getCache("dashboardSummary");
                 if (cache != null) cache.clear();
@@ -455,6 +457,52 @@ public class PaperSyncServiceImpl implements PaperSyncService {
     }
 
     /**
+     * Enrich citationCount và hIndex cho các authors chưa có stats từ OpenAlex.
+     * Dùng batch fetch để giảm số API calls. Trả về số authors đã được enrich.
+     */
+    @Override
+    public int enrichAuthorStats(int limit) {
+        List<Author> toEnrich = authorRepository.findUnenrichedAuthors(
+                PageRequest.of(0, limit));
+        if (toEnrich.isEmpty()) {
+            return 0;
+        }
+        log.info("[SYNC] Enriching stats for {} authors from OpenAlex", toEnrich.size());
+        List<String> ids = toEnrich.stream()
+                .map(Author::getSourceIdentifier)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .collect(Collectors.toList());
+        if (ids.isEmpty()) return 0;
+        try {
+            Map<String, ExternalAuthorProfile> profileMap = openAlexClient.fetchAuthorsByIds(ids).stream()
+                    .filter(p -> StringUtils.hasText(p.openAlexId()))
+                    .collect(Collectors.toMap(
+                            p -> p.openAlexId().toLowerCase().trim(),
+                            p -> p,
+                            (a, b) -> a));
+            List<Author> toSave = new ArrayList<>();
+            for (Author author : toEnrich) {
+                if (!StringUtils.hasText(author.getSourceIdentifier())) continue;
+                ExternalAuthorProfile profile = profileMap.get(author.getSourceIdentifier().toLowerCase().trim());
+                if (profile != null) {
+                    if (profile.citedByCount() != null) author.setCitationCount(profile.citedByCount());
+                    if (profile.hIndex() != null) author.setHIndex(profile.hIndex());
+                    toSave.add(author);
+                }
+            }
+            if (!toSave.isEmpty()) {
+                authorRepository.saveAll(toSave);
+                log.info("[SYNC] Enriched {} authors with citationCount + hIndex", toSave.size());
+            }
+            return toSave.size();
+        } catch (Exception ex) {
+            log.warn("[SYNC] Failed to batch-enrich author stats: {}", ex.getMessage());
+            return 0;
+        }
+    }
+
+    /**
      * [Fix #7] Helper chạy post-sync task với error isolation.
      */
     private void runPostSyncTask(String taskName, Runnable task) {
@@ -474,6 +522,30 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             return 0;
         }
         List<ExternalPaperMetadata> slice = batch.size() > maxRemaining ? batch.subList(0, maxRemaining) : batch;
+
+        // Pre-fetch author stats BEFORE opening the DB transaction to avoid holding connection during HTTP calls
+        // Keep original case for API calls; deduplicate by lowercase key
+        Map<String, String> candidateAuthorIds = new HashMap<>(); // lowercase -> original
+        for (ExternalPaperMetadata metadata : slice) {
+            if (metadata.authorDetails() != null) {
+                for (ExternalAuthorInfo info : metadata.authorDetails()) {
+                    if ("OPENALEX".equalsIgnoreCase(info.sourceType()) && StringUtils.hasText(info.sourceIdentifier())) {
+                        String orig = info.sourceIdentifier().trim();
+                        candidateAuthorIds.putIfAbsent(orig.toLowerCase(), orig);
+                    }
+                }
+            }
+        }
+        Map<String, ExternalAuthorProfile> prefetchedProfiles = new HashMap<>();
+        if (!candidateAuthorIds.isEmpty()) {
+            try {
+                openAlexClient.fetchAuthorsByIds(new ArrayList<>(candidateAuthorIds.values())).stream()
+                        .filter(p -> StringUtils.hasText(p.openAlexId()))
+                        .forEach(p -> prefetchedProfiles.put(p.openAlexId().toLowerCase().trim(), p));
+            } catch (Exception ex) {
+                log.warn("[SYNC] Pre-fetch author stats failed, hIndex will be null: {}", ex.getMessage());
+            }
+        }
 
         // [Fix #5] Nới lỏng validation — chỉ yêu cầu title, publicationDate, doi
         List<ExternalPaperMetadata> validMetas = new ArrayList<>();
@@ -694,6 +766,17 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 }
             }
             if (!authorsToSave.isEmpty()) {
+                // Apply pre-fetched author stats (fetched outside transaction to avoid holding DB connection during HTTP)
+                for (Author a : authorsToSave) {
+                    if (!"OPENALEX".equalsIgnoreCase(a.getSourceType())
+                            || !StringUtils.hasText(a.getSourceIdentifier())
+                            || a.getHIndex() != null) continue;
+                    ExternalAuthorProfile profile = prefetchedProfiles.get(a.getSourceIdentifier().toLowerCase().trim());
+                    if (profile != null) {
+                        if (profile.citedByCount() != null) a.setCitationCount(profile.citedByCount());
+                        if (profile.hIndex() != null) a.setHIndex(profile.hIndex());
+                    }
+                }
                 authorRepository.saveAll(authorsToSave);
             }
 
@@ -704,6 +787,22 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             Set<Paper> newPapersSet = new HashSet<>();
 
             for (ExternalPaperMetadata metadata : validMetas) {
+                // Skip papers whose keywords are all filtered out by domain whitelist
+                if (!allowedDomainsLower.isEmpty()) {
+                    boolean hasValidKeyword = false;
+                    if (metadata.keywords() != null) {
+                        for (ExternalKeywordInfo kw : metadata.keywords()) {
+                            if (!StringUtils.hasText(kw.term())) continue;
+                            String d = StringUtils.hasText(kw.domain()) ? kw.domain().trim().toLowerCase() : "general";
+                            if (allowedDomainsLower.contains(d)) {
+                                hasValidKeyword = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!hasValidKeyword) continue;
+                }
+
                 Paper paper = null;
                 if (StringUtils.hasText(metadata.sourceIdentifier()) && StringUtils.hasText(metadata.sourceType())) {
                     String key = metadata.sourceType().toUpperCase() + ":" + metadata.sourceIdentifier().toLowerCase().trim();
