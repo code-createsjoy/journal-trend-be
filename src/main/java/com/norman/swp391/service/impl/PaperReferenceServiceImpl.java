@@ -86,16 +86,14 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
                 .map(PaperReference::getReferencedOpenAlexId)
                 .toList();
 
-        // 3. Batch lookup cached metadata — chỉ lấy entries còn fresh (trong 7 ngày)
-        LocalDateTime staleThreshold = LocalDateTime.now().minusDays(7);
+        // 3. Batch lookup metadata — lưu vĩnh viễn, không TTL
         Map<String, ReferenceMetadata> cachedMap = new HashMap<>();
-        List<ReferenceMetadata> cachedList =
-                referenceMetadataRepository.findByOpenAlexIdInAndFetchedAtAfter(openAlexIds, staleThreshold);
+        List<ReferenceMetadata> cachedList = referenceMetadataRepository.findByOpenAlexIdIn(openAlexIds);
         for (ReferenceMetadata rm : cachedList) {
             cachedMap.put(rm.getOpenAlexId(), rm);
         }
 
-        // 4. Identify cache misses (chưa có hoặc đã stale) và batch fetch
+        // 4. Identify cache misses và batch fetch
         List<String> missingIds = openAlexIds.stream()
                 .filter(id -> !cachedMap.containsKey(id))
                 .distinct()
@@ -167,18 +165,19 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
         }
 
         // 5. Cross-reference with local papers (by sourceIdentifier)
-        Map<String, Long> localPaperMap = new HashMap<>();
+        Map<String, Paper> localPaperMap = new HashMap<>();
         List<Paper> localPapers = paperRepository.findBySourceTypeAndSourceIdentifierIn("OPENALEX", openAlexIds);
         for (Paper p : localPapers) {
             if (StringUtils.hasText(p.getSourceIdentifier())) {
-                localPaperMap.put(p.getSourceIdentifier(), p.getId());
+                localPaperMap.put(p.getSourceIdentifier(), p);
             }
         }
 
         // Update localPaperId in cached metadata if newly matched
         for (ReferenceMetadata rm : cachedMap.values()) {
             if (rm == null) continue;
-            Long localId = localPaperMap.get(rm.getOpenAlexId());
+            Paper localPaper = localPaperMap.get(rm.getOpenAlexId());
+            Long localId = localPaper != null ? localPaper.getId() : null;
             if (localId != null && rm.getLocalPaperId() == null) {
                 rm.setLocalPaperId(localId);
                 try {
@@ -191,17 +190,27 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
             }
         }
 
-        // 6. Build response
+        // 6. Build response — fallback sang local paper khi reference_metadata thiếu data
         List<HelixReferenceNode> result = new ArrayList<>();
         for (String openAlexId : openAlexIds) {
             ReferenceMetadata rm = cachedMap.get(openAlexId);
-            Long localId = localPaperMap.get(openAlexId);
+            Paper localPaper = localPaperMap.get(openAlexId);
+            Long localId = localPaper != null ? localPaper.getId() : null;
+            String title = rm != null && rm.getTitle() != null ? rm.getTitle()
+                    : localPaper != null ? localPaper.getTitle() : null;
+            Integer year = rm != null && rm.getPublicationYear() != null ? rm.getPublicationYear()
+                    : localPaper != null && localPaper.getPublicationDate() != null
+                            ? localPaper.getPublicationDate().getYear() : null;
+            String doi = rm != null && rm.getDoi() != null ? rm.getDoi()
+                    : localPaper != null ? localPaper.getDoi() : null;
+            Integer citations = rm != null && rm.getCitationCount() != null ? rm.getCitationCount()
+                    : localPaper != null ? localPaper.getCitationCount() : null;
             result.add(new HelixReferenceNode(
                     openAlexId,
-                    rm != null ? rm.getTitle() : null,
-                    rm != null ? rm.getPublicationYear() : null,
-                    rm != null ? rm.getDoi() : null,
-                    rm != null ? rm.getCitationCount() : null,
+                    title,
+                    year,
+                    doi,
+                    citations,
                     localId != null ? localId.toString() : null,
                     localId != null
             ));
@@ -299,15 +308,13 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
             return List.of();
         }
 
-        // 2. Batch lookup metadata từ reference_metadata cache (7-day TTL)
+        // 2. Batch lookup metadata từ reference_metadata — lưu vĩnh viễn, không TTL
         List<String> citingIds = cachedCitations.stream()
                 .map(PaperCitation::getCitingOpenAlexId)
                 .toList();
 
-        LocalDateTime staleThreshold = LocalDateTime.now().minusDays(7);
         Map<String, ReferenceMetadata> metaMap = new HashMap<>();
-        List<ReferenceMetadata> cachedMeta =
-                referenceMetadataRepository.findByOpenAlexIdInAndFetchedAtAfter(citingIds, staleThreshold);
+        List<ReferenceMetadata> cachedMeta = referenceMetadataRepository.findByOpenAlexIdIn(citingIds);
         for (ReferenceMetadata rm : cachedMeta) {
             metaMap.put(rm.getOpenAlexId(), rm);
         }
@@ -374,31 +381,41 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
         }
 
         // 4. Cross-reference với local papers
-        Map<String, Long> localPaperMap = new HashMap<>();
+        Map<String, Paper> localPaperMap = new HashMap<>();
         List<Paper> localPapers = paperRepository.findBySourceTypeAndSourceIdentifierIn("OPENALEX", citingIds);
         for (Paper p : localPapers) {
             if (StringUtils.hasText(p.getSourceIdentifier())) {
-                localPaperMap.put(p.getSourceIdentifier(), p.getId());
+                localPaperMap.put(p.getSourceIdentifier(), p);
             }
         }
 
-        // 5. Build nodes, áp dụng year filter
+        // 5. Build nodes, áp dụng year filter — fallback sang local paper khi metadata thiếu data
         List<HelixCitationNode> result = new ArrayList<>();
         for (String citingId : citingIds) {
             ReferenceMetadata rm = metaMap.get(citingId);
-            // Khi có year filter, loại bỏ record không có năm thay vì cho qua
+            Paper localPaper = localPaperMap.get(citingId);
+            Long localId = localPaper != null ? localPaper.getId() : null;
+            String title = rm != null && rm.getTitle() != null ? rm.getTitle()
+                    : localPaper != null ? localPaper.getTitle() : null;
+            Integer year = rm != null && rm.getPublicationYear() != null ? rm.getPublicationYear()
+                    : localPaper != null && localPaper.getPublicationDate() != null
+                            ? localPaper.getPublicationDate().getYear() : null;
+            String doi = rm != null && rm.getDoi() != null ? rm.getDoi()
+                    : localPaper != null ? localPaper.getDoi() : null;
+            Integer citations = rm != null && rm.getCitationCount() != null ? rm.getCitationCount()
+                    : localPaper != null ? localPaper.getCitationCount() : null;
+            // Khi có year filter, dùng year đã resolve (có fallback) thay vì chỉ rm
             if (yearFrom != null || yearTo != null) {
-                if (rm == null || rm.getPublicationYear() == null) continue;
-                if (yearFrom != null && rm.getPublicationYear() < yearFrom) continue;
-                if (yearTo != null && rm.getPublicationYear() > yearTo) continue;
+                if (year == null) continue;
+                if (yearFrom != null && year < yearFrom) continue;
+                if (yearTo != null && year > yearTo) continue;
             }
-            Long localId = localPaperMap.get(citingId);
             result.add(new HelixCitationNode(
                     citingId,
-                    rm != null ? rm.getTitle() : null,
-                    rm != null ? rm.getPublicationYear() : null,
-                    rm != null ? rm.getDoi() : null,
-                    rm != null ? rm.getCitationCount() : null,
+                    title,
+                    year,
+                    doi,
+                    citations,
                     localId != null ? localId.toString() : null,
                     localId != null
             ));
