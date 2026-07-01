@@ -118,13 +118,15 @@ public class PersonalReportServiceImpl implements PersonalReportService {
             top10KeywordIds = new ArrayList<>(topIdSet);
         }
 
-        // Tính 3 tháng gần nhất (dạng YYYYMM) tính từ thời điểm hiện tại
-        YearMonth current = YearMonth.now();
+        // Tính 3 tháng đã hoàn thành + tháng hiện tại đang cập nhật
+        YearMonth lastCompleted = YearMonth.now().minusMonths(1);
         List<Integer> yearMonths = new ArrayList<>();
         for (int i = 2; i >= 0; i--) {
-            YearMonth ym = current.minusMonths(i);
+            YearMonth ym = lastCompleted.minusMonths(i);
             yearMonths.add(ym.getYear() * 100 + ym.getMonthValue());
         }
+        YearMonth current = YearMonth.now();
+        yearMonths.add(current.getYear() * 100 + current.getMonthValue());
 
         // Line Chart: Xu hướng từ khóa theo tháng (3 tháng gần nhất, dữ liệu thật từ DB)
         List<KeywordTrendPoint> lineChart = new ArrayList<>();
@@ -269,7 +271,7 @@ public class PersonalReportServiceImpl implements PersonalReportService {
     private LandscapeSection buildLandscapeSection(List<Long> keywordIds, Set<String> domains) {
         // Bubble Chart: Tác giả dẫn đầu
         List<AuthorInfluencePoint> bubbleChart = new ArrayList<>();
-        List<Object[]> authorRows = paperAuthorRepository.findTopAuthorsByKeywordIds(keywordIds, PageRequest.of(0, 5));
+        List<Object[]> authorRows = paperAuthorRepository.findTopAuthorsByKeywordIds(keywordIds, PageRequest.of(0, 6));
         for (Object[] row : authorRows) {
             Author author = (Author) row[0];
             Long count = (Long) row[1];
