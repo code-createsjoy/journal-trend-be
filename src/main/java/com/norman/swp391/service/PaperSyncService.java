@@ -21,6 +21,12 @@ public interface PaperSyncService {
      * Đánh dấu các sync RUNNING quá hạn là FAILED.
      */
     void resetStaleRunningSyncs();
+
+    /**
+     * Enrich citationCount + hIndex cho authors chưa có stats từ OpenAlex.
+     * Trả về số authors đã được enrich.
+     */
+    int enrichAuthorStats(int limit);
 }
 
 

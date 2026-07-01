@@ -17,6 +17,7 @@ public class AuthorDetailResponse {
     private String name;
     private String affiliation;
     private int citationCount;
+    private Integer hIndex;
     private long totalPapers;
     private List<String> topKeywords;
     private List<PaperResponse> popularPapers;

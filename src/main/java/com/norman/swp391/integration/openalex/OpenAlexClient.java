@@ -107,6 +107,43 @@ public class OpenAlexClient {
     /**
      * Lấy hồ sơ tác giả từ OpenAlex.
      */
+    /**
+     * Batch fetch citedByCount + hIndex cho nhiều authors theo OpenAlex IDs.
+     * Dùng pipe filter giống fetchWorksByIds — một call cho tối đa 50 IDs.
+     */
+    public List<ExternalAuthorProfile> fetchAuthorsByIds(List<String> openAlexIds) {
+        if (openAlexIds == null || openAlexIds.isEmpty()) {
+            return List.of();
+        }
+        List<ExternalAuthorProfile> results = new ArrayList<>();
+        int batchSize = 50;
+        for (int i = 0; i < openAlexIds.size(); i += batchSize) {
+            List<String> batch = openAlexIds.subList(i, Math.min(i + batchSize, openAlexIds.size()));
+            String pipeFilter = batch.stream()
+                    .map(this::toOpenAlexAuthorId)
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.joining("|"));
+            if (!StringUtils.hasText(pipeFilter)) continue;
+            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                    appProperties.getOpenalex().getBaseUrl() + "/authors")
+                    .queryParam("filter", "openalex_id:" + pipeFilter)
+                    .queryParam("per_page", batch.size())
+                    .queryParam("select", "id,cited_by_count,works_count,summary_stats");
+            appendMailto(builder);
+            appendApiKey(builder);
+            JsonNode root = fetchJsonSafe(builder.toUriString());
+            if (root != null && root.has("results") && root.path("results").isArray()) {
+                for (JsonNode author : root.path("results")) {
+                    ExternalAuthorProfile profile = mapAuthorProfile(author);
+                    if (StringUtils.hasText(profile.openAlexId())) {
+                        results.add(profile);
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
     public Optional<ExternalAuthorProfile> fetchAuthorProfile(String authorId) {
         String normalized = normalizeAuthorId(authorId);
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(

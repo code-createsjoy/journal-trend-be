@@ -24,6 +24,7 @@ public class AuthorMapper {
                 .name(author.getName())
                 .affiliation(author.getAffiliation())
                 .citationCount(author.getCitationCount())
+                .hIndex(author.getHIndex())
                 .sourceType(author.getSourceType())
                 .sourceIdentifier(author.getSourceIdentifier())
                 .build();
