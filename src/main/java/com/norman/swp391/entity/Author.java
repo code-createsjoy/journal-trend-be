@@ -43,6 +43,9 @@ public class Author {
     @Column(name = "citation_count", nullable = false)
     private int citationCount;
 
+    @Column(name = "h_index")
+    private Integer hIndex;
+
     @Nationalized
     @Column(name = "source_type", length = 50)
     private String sourceType;

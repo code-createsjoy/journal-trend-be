@@ -80,6 +80,8 @@ public class PersonalReportResponse {
         private Long paperCount;
         private String mainDomain;
         private Integer matchingKeywordCount;
+        private Integer hIndex;
+        private Integer citationCount;
     }
 
     @Data

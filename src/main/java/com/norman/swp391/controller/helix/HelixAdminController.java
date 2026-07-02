@@ -34,6 +34,7 @@ public class HelixAdminController {
     private final TrendDemoStatsService trendDemoStatsService;
     private final AppProperties appProperties;
     private final PaperMetadataRepairService paperMetadataRepairService;
+    private final PaperSyncService paperSyncService;
 
     /**
      * Xử lý API overview.
@@ -95,6 +96,12 @@ public class HelixAdminController {
     public HelixSyncResult repairMetadata(@RequestParam(defaultValue = "50") int limit) {
         int repaired = paperMetadataRepairService.repairFromOpenAlex(limit);
         return new HelixSyncResult(repaired, "SUCCESS", "Repaired " + repaired + " papers from OpenAlex");
+    }
+
+    @PostMapping("/authors/enrich-stats")
+    public HelixSyncResult enrichAuthorStats(@RequestParam(defaultValue = "10000") int limit) {
+        int enriched = paperSyncService.enrichAuthorStats(limit);
+        return new HelixSyncResult(enriched, "SUCCESS", "Enriched " + enriched + " authors with hIndex + citationCount");
     }
 
     @PostMapping("/papers/review/expire-stale")

@@ -277,6 +277,8 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                     .paperCount(count)
                     .mainDomain(author.getAffiliation() != null ? author.getAffiliation() : "Academic Institute")
                     .matchingKeywordCount(Math.max(overlapCount, 1))
+                    .hIndex(author.getHIndex())
+                    .citationCount(author.getCitationCount())
                     .build());
         }
 

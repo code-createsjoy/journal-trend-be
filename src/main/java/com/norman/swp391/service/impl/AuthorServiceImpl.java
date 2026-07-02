@@ -104,6 +104,7 @@ public class AuthorServiceImpl implements AuthorService {
                 .name(author.getName())
                 .affiliation(author.getAffiliation())
                 .citationCount(author.getCitationCount())
+                .hIndex(author.getHIndex())
                 .totalPapers(totalPapers)
                 .topKeywords(topKeywords)
                 .popularPapers(popularPapers)

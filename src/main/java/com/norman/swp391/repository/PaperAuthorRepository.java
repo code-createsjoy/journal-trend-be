@@ -38,10 +38,10 @@ public interface PaperAuthorRepository extends JpaRepository<PaperAuthor, Long> 
         FROM PaperAuthor pa
         JOIN pa.paper p
         JOIN PaperKeyword pk ON pk.paper.id = p.id
-        WHERE pk.keyword.keywordId IN :keywordIds 
+        WHERE pk.keyword.keywordId IN :keywordIds
           AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
-        GROUP BY pa.author, pa.author.id, pa.author.name, pa.author.affiliation, pa.author.citationCount, pa.author.sourceType, pa.author.sourceIdentifier
-        ORDER BY COUNT(DISTINCT p) DESC
+        GROUP BY pa.author, pa.author.id, pa.author.name, pa.author.affiliation, pa.author.citationCount, pa.author.hIndex, pa.author.sourceType, pa.author.sourceIdentifier
+        ORDER BY COUNT(DISTINCT p) DESC, pa.author.hIndex DESC
         """)
     List<Object[]> findTopAuthorsByKeywordIds(@Param("keywordIds") java.util.Collection<Long> keywordIds, org.springframework.data.domain.Pageable pageable);
 }

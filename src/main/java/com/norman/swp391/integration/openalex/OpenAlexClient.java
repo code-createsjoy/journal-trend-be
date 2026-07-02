@@ -12,10 +12,12 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -105,6 +107,43 @@ public class OpenAlexClient {
     /**
      * Lấy hồ sơ tác giả từ OpenAlex.
      */
+    /**
+     * Batch fetch citedByCount + hIndex cho nhiều authors theo OpenAlex IDs.
+     * Dùng pipe filter giống fetchWorksByIds — một call cho tối đa 50 IDs.
+     */
+    public List<ExternalAuthorProfile> fetchAuthorsByIds(List<String> openAlexIds) {
+        if (openAlexIds == null || openAlexIds.isEmpty()) {
+            return List.of();
+        }
+        List<ExternalAuthorProfile> results = new ArrayList<>();
+        int batchSize = 50;
+        for (int i = 0; i < openAlexIds.size(); i += batchSize) {
+            List<String> batch = openAlexIds.subList(i, Math.min(i + batchSize, openAlexIds.size()));
+            String pipeFilter = batch.stream()
+                    .map(this::toOpenAlexAuthorId)
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.joining("|"));
+            if (!StringUtils.hasText(pipeFilter)) continue;
+            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                    appProperties.getOpenalex().getBaseUrl() + "/authors")
+                    .queryParam("filter", "openalex_id:" + pipeFilter)
+                    .queryParam("per_page", batch.size())
+                    .queryParam("select", "id,cited_by_count,works_count,summary_stats");
+            appendMailto(builder);
+            appendApiKey(builder);
+            JsonNode root = fetchJsonSafe(builder.toUriString());
+            if (root != null && root.has("results") && root.path("results").isArray()) {
+                for (JsonNode author : root.path("results")) {
+                    ExternalAuthorProfile profile = mapAuthorProfile(author);
+                    if (StringUtils.hasText(profile.openAlexId())) {
+                        results.add(profile);
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
     public Optional<ExternalAuthorProfile> fetchAuthorProfile(String authorId) {
         String normalized = normalizeAuthorId(authorId);
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
@@ -477,13 +516,14 @@ public class OpenAlexClient {
     /**
      * Batch fetch metadata cho nhiều works theo OpenAlex IDs.
      * Sử dụng filter pipe: openalex_id:W1|W2|W3 (tối đa ~50 IDs/request).
+     * IDs không có trong kết quả batch (do OpenAlex merge/alias) sẽ được fetch đơn lẻ qua
+     * /works/{id} — endpoint này hỗ trợ redirect nên lấy được metadata dù ID đã bị gộp.
      */
     public List<ExternalPaperMetadata> fetchWorksByIds(List<String> openAlexIds) {
         if (openAlexIds == null || openAlexIds.isEmpty()) {
             return List.of();
         }
         List<ExternalPaperMetadata> allResults = new ArrayList<>();
-        // OpenAlex giới hạn ~50 IDs per pipe filter
         int batchSize = 50;
         for (int i = 0; i < openAlexIds.size(); i += batchSize) {
             List<String> batch = openAlexIds.subList(i, Math.min(i + batchSize, openAlexIds.size()));
@@ -511,7 +551,59 @@ public class OpenAlexClient {
                 }
             }
         }
+
+        // Fallback: IDs không có trong kết quả batch → fetch đơn lẻ.
+        // /works/{id} theo redirect nên xử lý được cả trường hợp OpenAlex đã merge ID.
+        // sourceIdentifier giữ nguyên ID gốc để mapping trong reference_metadata đúng key.
+        Set<String> returnedIds = allResults.stream()
+                .map(ExternalPaperMetadata::sourceIdentifier)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        List<String> stillMissing = openAlexIds.stream()
+                .filter(id -> !returnedIds.contains(id))
+                .toList();
+        if (!stillMissing.isEmpty()) {
+            log.debug("[OpenAlex] {} IDs missing from batch, trying individual lookup (possible merged IDs)",
+                    stillMissing.size());
+            for (String originalId : stillMissing) {
+                ExternalPaperMetadata meta = fetchSingleWorkById(originalId);
+                if (meta != null) {
+                    allResults.add(meta);
+                }
+            }
+        }
+
         return allResults;
+    }
+
+    /**
+     * Fetch metadata cho một work đơn lẻ qua /works/{id}.
+     * Endpoint này hỗ trợ HTTP redirect — dùng để fallback khi batch pipe filter bỏ qua ID
+     * (thường do OpenAlex đã merge work vào ID khác).
+     * sourceIdentifier trả về là originalId (không phải ID sau redirect) để mapping đúng key.
+     */
+    private ExternalPaperMetadata fetchSingleWorkById(String originalId) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                appProperties.getOpenalex().getBaseUrl() + "/works/" + originalId)
+                .queryParam("select", "id,title,publication_year,publication_date,doi,cited_by_count");
+        appendMailto(builder);
+        appendApiKey(builder);
+        JsonNode work = fetchJsonSafe(builder.toUriString());
+        if (work == null || work.isMissingNode() || work.isNull()) {
+            return null;
+        }
+        String title = textOrNull(work.path("title"));
+        String doi = normalizeDoi(textOrNull(work.path("doi")));
+        LocalDate pubDate = resolvePublicationDate(work);
+        Integer citations = work.path("cited_by_count").isInt()
+                ? work.path("cited_by_count").asInt() : null;
+        if (title == null && pubDate == null && doi == null) {
+            return null;
+        }
+        return new ExternalPaperMetadata(
+                title, null, doi, pubDate, citations,
+                List.of(), List.of(), null, null, null, null,
+                "OPENALEX", originalId);
     }
 
     /**

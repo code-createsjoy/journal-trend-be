@@ -493,7 +493,7 @@ public class HelixApiService {
 
     public HelixSyncResult triggerAdminSync() {
         SyncLogResponse log = adminService.triggerSync();
-        return new HelixSyncResult(log.getPapersFetched(), log.getStatus().name(), toSyncMessage(log));
+        return new HelixSyncResult(log.getPapersInserted(), log.getStatus().name(), toSyncMessage(log));
     }
 
     public HelixSyncResult latestSyncStatus() {
@@ -501,7 +501,7 @@ public class HelixApiService {
         if (log == null) {
             return new HelixSyncResult(0, "NONE", "No sync runs yet");
         }
-        return new HelixSyncResult(log.getPapersFetched(), log.getStatus().name(), toSyncMessage(log));
+        return new HelixSyncResult(log.getPapersInserted(), log.getStatus().name(), toSyncMessage(log));
     }
 
     public HelixSyncResult resetStaleSync() {
@@ -553,7 +553,7 @@ public class HelixApiService {
             return "Syncing metadata from OpenAlex…";
         }
         if (log.getStatus() == SyncStatus.SUCCESS) {
-            return "Complete · " + log.getPapersFetched() + " papers";
+            return "Complete · " + log.getPapersInserted() + " papers inserted";
         }
         String err = log.getErrorMessage();
         return "Failed · " + (err != null ? err : "see audit log");
