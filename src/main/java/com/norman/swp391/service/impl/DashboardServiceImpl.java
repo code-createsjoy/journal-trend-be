@@ -51,7 +51,7 @@ public class DashboardServiceImpl implements DashboardService {
         long totalJournals = journalRepository.count();
         long totalKeywords = keywordRepository.count();
 
-        List<Keyword> trendingKeywords = keywordTrendService.findTrendingKeywords();
+        List<Keyword> trendingKeywords = keywordTrendService.findTrendingKeywords(null, null);
         long trendingKeywordsCount = trendingKeywords.size();
 
         long trendingTopicsCount = trendingKeywords.stream()

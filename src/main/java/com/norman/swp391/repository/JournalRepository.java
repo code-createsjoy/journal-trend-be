@@ -39,4 +39,18 @@ public interface JournalRepository extends JpaRepository<Journal, Long> {
         ORDER BY COUNT(p.id) DESC
         """)
     java.util.List<Object[]> findTopJournalsByPaperCount(org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Tổng lượt trích dẫn và số bài ACTIVE theo từng tạp chí, dùng để tính Impact Factor proxy.
+     * Gộp thành 1 query duy nhất (GROUP BY) để tránh N+1 khi chạy cho toàn bộ danh sách journal.
+     */
+    @Query("""
+        SELECT j.id, COALESCE(SUM(p.citationCount), 0), COUNT(p.id)
+        FROM Paper p
+        JOIN p.journalRef j
+        WHERE p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+          AND p.reviewStatus = com.norman.swp391.entity.enums.PaperReviewStatus.NONE
+        GROUP BY j.id
+        """)
+    java.util.List<Object[]> aggregateCitationStatsByJournal();
 }

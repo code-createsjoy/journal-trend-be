@@ -9,8 +9,8 @@ import java.util.List;
 public interface KeywordTrendService {
     void recalculateAll();
     void backfillHistoricalMonths(int monthsBack);
-    List<Keyword> findTrendingKeywords();
-    List<TrendingKeywordResponse> findTrendingKeywordResponses();
+    List<Keyword> findTrendingKeywords(Integer year, Integer month);
+    List<TrendingKeywordResponse> findTrendingKeywordResponses(Integer year, Integer month);
     List<TrendingKeywordResponse> findTopByTrendScore(int limit);
     PublicationTrend getCurrentMonthTrend(Long keywordId);
     List<TrendingTopicResponse> findTrendingTopics();

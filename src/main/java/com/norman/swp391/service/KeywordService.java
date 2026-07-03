@@ -8,6 +8,6 @@ import java.util.List;
 public interface KeywordService {
     List<KeywordResponse> listAll();
     KeywordResponse getById(Long id);
-    List<TrendingKeywordResponse> getTrendingKeywords();
+    List<TrendingKeywordResponse> getTrendingKeywords(Integer year, Integer month);
     List<KeywordTrendResponse> getKeywordTrendChart(Long keywordId, int months);
 }
