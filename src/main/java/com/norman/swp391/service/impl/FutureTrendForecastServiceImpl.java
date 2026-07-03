@@ -9,6 +9,7 @@ import com.norman.swp391.dto.response.keyword.ForecastMonthDto;
 import com.norman.swp391.entity.FutureTrendForecast;
 import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.PublicationTrend;
+import com.norman.swp391.entity.enums.ForecastCategory;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.repository.FutureTrendForecastRepository;
 import com.norman.swp391.repository.KeywordRepository;
@@ -127,14 +128,14 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
             double currentTotal = Math.max(1.0, m.keyword().getPaperCount());
             double growthRate   = (predictedTotal / currentTotal) * 100.0;
 
-            String reason = classifyReason(sTPS, m.acc());
+            String category = ForecastCategory.classify(sTPS, m.acc()).name();
 
             toSave.add(FutureTrendForecast.builder()
                 .keyword(m.keyword())
                 .potentialScore(bd(sTPS, 2))
                 .predictedPapers6m(predictedTotal)
                 .predictedGrowthRate(bd(growthRate, 2))
-                .forecastReason(reason)
+                .forecastReason(category)
                 .forecastMonthsJson(toJson(forecastMonths))
                 .calculatedAt(jobStart)
                 .build());
@@ -309,12 +310,6 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     // ────────────────────────────────────────────────────────
     // HỖ TRỢ
     // ────────────────────────────────────────────────────────
-    private String classifyReason(double sTPS, double acc) {
-        if (sTPS >= 80 && acc > 0) return "Bùng nổ sớm";
-        if (sTPS >= 60)            return "Tăng trưởng vượt bậc";
-        return "Tăng trưởng ổn định";
-    }
-
     private BigDecimal bd(double value, int scale) {
         return BigDecimal.valueOf(value).setScale(scale, RoundingMode.HALF_UP);
     }

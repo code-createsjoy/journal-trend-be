@@ -20,6 +20,6 @@ public class ForecastListResponse {
     private BigDecimal potentialScore;       // sTPS 0-100
     private int predictedPapers6m;           // tổng bài dự báo 6 tháng
     private BigDecimal predictedGrowthRate;  // % tăng trưởng
-    private String forecastReason;           // "Bùng nổ sớm" / ...
+    private String forecastReason;           // ma ForecastCategory: EARLY_BOOM / BREAKOUT / STEADY
     private int currentPaperCount;           // số bài hiện tại
 }

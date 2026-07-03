@@ -21,7 +21,7 @@ public class ForecastDetailResponse {
     private BigDecimal potentialScore;
     private int predictedPapers6m;
     private BigDecimal predictedGrowthRate;
-    private String forecastReason;
+    private String forecastReason;   // ma ForecastCategory: EARLY_BOOM / BREAKOUT / STEADY
 
     // Lịch sử 12 tháng (nét liền trên chart)
     private List<ForecastMonthDto> historicalMonths;
