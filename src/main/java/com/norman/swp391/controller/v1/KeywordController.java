@@ -32,8 +32,10 @@ public class KeywordController {
      * Xử lý API getTrending.
      */
     @GetMapping("/trending")
-    public ApiResponse<List<TrendingKeywordResponse>> getTrending() {
-        return ApiResponse.ok(keywordService.getTrendingKeywords());
+    public ApiResponse<List<TrendingKeywordResponse>> getTrending(
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month) {
+        return ApiResponse.ok(keywordService.getTrendingKeywords(year, month));
     }
 
     /**

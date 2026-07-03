@@ -412,10 +412,12 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 }
             });
             runPostSyncTask("notifyTrending",
-                    () -> notificationService.notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords()));
+                    () -> notificationService.notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords(null, null)));
             runPostSyncTask("notifyNewPapers",
                     () -> notificationService.notifyNewPapersForSubscriptions(newPaperIds));
             runPostSyncTask("enrichAuthorStats", () -> enrichAuthorStats(50)); // chỉ xử lý authors mới từ sync này
+            runPostSyncTask("updateJournalImpactFactors",
+                    () -> journalService.calculateAndUpdateJournalImpactFactors());
             runPostSyncTask("evictDashboardCache", () -> {
                 var cache = cacheManager.getCache("dashboardSummary");
                 if (cache != null) cache.clear();
