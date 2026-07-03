@@ -48,7 +48,8 @@ public class FutureTrendForecast {
     @Column(name = "predicted_growth_rate", nullable = false, precision = 10, scale = 2)
     private BigDecimal predictedGrowthRate;
 
-    @Column(name = "forecast_reason", nullable = false, length = 100)
+    // Ma ForecastCategory (EARLY_BOOM / BREAKOUT / STEADY) — ASCII, an toan voi cot khong Unicode.
+    @Column(name = "forecast_reason", nullable = false, length = 30)
     private String forecastReason;
 
     // JSON string: [{"year":2026,"month":7,"paperCount":52}, ...]
