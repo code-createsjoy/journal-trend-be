@@ -149,6 +149,10 @@ public class AppProperties {
         private String forecastCron = "0 0 4 1 * *";
         /** Số tháng lịch sử tối thiểu để tính forecast. */
         private int forecastMinMonths = 6;
+        /** Số tháng lịch sử tối đa dùng cho hồi quy / biểu đồ. */
+        private int forecastHistoryWindow = 12;
+        /** Số tháng dự báo về phía trước. */
+        private int forecastHorizon = 6;
         /** Số keyword tối đa lưu vào bảng forecast. */
         private int forecastMaxKeywords = 200;
         /** Trọng số slope trong sTPS (mặc định 0.5). */
