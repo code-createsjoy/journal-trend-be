@@ -57,10 +57,10 @@ app:
   password-reset-expiration-minutes: 30
   email-verification-expiration-minutes: ${EMAIL_VERIFICATION_EXPIRATION_MINUTES:1440}
   rate-limit-per-minute: 60
-  gemini:
-    api-key: ${GEMINI_API_KEY:}
-    model: ${GEMINI_MODEL:gemini-2.0-flash}
-    max-output-tokens: ${GEMINI_MAX_TOKENS:1024}
+  groq:
+    api-key: ${GROQ_API_KEY:}
+    model: ${GROQ_MODEL:llama-3.3-70b-versatile}
+    max-output-tokens: ${GROQ_MAX_TOKENS:1024}
   openalex:
     base-url: https://api.openalex.org
     # mailto: ${OPENALEX_MAILTO:research@example.com}

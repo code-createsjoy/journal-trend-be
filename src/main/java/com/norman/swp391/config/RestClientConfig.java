@@ -29,11 +29,11 @@ public class RestClientConfig {
                 .build();
     }
 
-    @Bean("geminiRestClient")
-    RestClient geminiRestClient(AppProperties appProperties) {
+    @Bean("groqRestClient")
+    RestClient groqRestClient(AppProperties appProperties) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10_000);
-        factory.setReadTimeout(appProperties.getGemini().getReadTimeoutMs());
+        factory.setReadTimeout(appProperties.getGroq().getReadTimeoutMs());
         return RestClient.builder().requestFactory(factory).build();
     }
 

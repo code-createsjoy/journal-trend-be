@@ -11,6 +11,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
@@ -70,6 +71,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error("Access denied"));
+    }
+
+    /**
+     * Thực hiện handleAiQuotaExhausted.
+     */
+    @ExceptionHandler(AiQuotaExhaustedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAiQuotaExhausted(AiQuotaExhaustedException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(error(ex.getMessage()));
+    }
+
+    /**
+     * Client đã ngắt kết nối trước khi server ghi xong response (đóng tab, chuyển trang, request bị hủy).
+     * Trả về void để tránh cố ghi thêm vào socket đã đóng, chỉ log ở mức DEBUG.
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException ex) {
+        log.debug("Client disconnected before response could be written: {}", ex.getMessage());
     }
 
     /**

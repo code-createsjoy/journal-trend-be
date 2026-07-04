@@ -9,7 +9,7 @@ import com.norman.swp391.dto.response.ai.AiTopTrendsAnalysisResponse;
 import com.norman.swp391.dto.response.ai.AiTrendAnalysisResponse;
 import com.norman.swp391.dto.response.keyword.KeywordResponse;
 import com.norman.swp391.dto.response.keyword.KeywordTrendResponse;
-import com.norman.swp391.entity.Keyword;
+import com.norman.swp391.exception.AiQuotaExhaustedException;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.service.AiAnalysisService;
 import com.norman.swp391.service.KeywordService;
@@ -21,8 +21,10 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 @Service
@@ -34,14 +36,14 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
     private final KeywordTrendService keywordTrendService;
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper;
-    @Qualifier("geminiRestClient")
-    private final RestClient geminiRestClient;
+    @Qualifier("groqRestClient")
+    private final RestClient groqRestClient;
 
     @Override
     public AiTrendAnalysisResponse analyzeTrend(AiTrendAnalysisRequest request) {
-        String apiKey = appProperties.getGemini().getApiKey();
+        String apiKey = appProperties.getGroq().getApiKey();
         if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException("GEMINI_API_KEY is not configured");
+            throw new IllegalStateException("GROQ_API_KEY is not configured");
         }
 
         KeywordResponse keyword = keywordService.getById(request.getKeywordId());
@@ -52,13 +54,13 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             throw new BadRequestException("No trend data available for keyword: " + keyword.getTerm());
         }
 
-        String prompt = buildPrompt(keyword.getTerm(), trendData, request.getChartImageBase64() != null);
-        String geminiResponseText = callGemini(prompt, request.getChartImageBase64(), request.getChartImageMimeType());
+        String prompt = buildPrompt(keyword.getTerm(), trendData);
+        String aiResponseText = callGroq(prompt);
 
-        return parseGeminiResponse(geminiResponseText, keyword.getTerm());
+        return parseAiResponse(aiResponseText, keyword.getTerm());
     }
 
-    private String buildPrompt(String term, List<KeywordTrendResponse> data, boolean hasImage) {
+    private String buildPrompt(String term, List<KeywordTrendResponse> data) {
         StringBuilder sb = new StringBuilder();
         sb.append("Bạn là chuyên gia phân tích xu hướng nghiên cứu học thuật. ");
         sb.append("Hãy phân tích dữ liệu xu hướng bài báo khoa học dưới đây và đưa ra nhận định chuyên sâu.\n\n");
@@ -71,10 +73,6 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                 sb.append(String.format(" (thay đổi: %+.1f%%)", d.getDeltaPercent().doubleValue()));
             }
             sb.append("\n");
-        }
-
-        if (hasImage) {
-            sb.append("\nBiểu đồ xu hướng cũng được đính kèm để tham khảo trực quan.\n");
         }
 
         sb.append("""
@@ -99,44 +97,44 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         return sb.toString();
     }
 
-    private String callGemini(String prompt, String imageBase64, String imageMimeType) {
-        AppProperties.Gemini cfg = appProperties.getGemini();
-        String url = cfg.getBaseUrl() + "/models/" + cfg.getModel() + ":generateContent?key=" + cfg.getApiKey();
+    private String callGroq(String prompt) {
+        AppProperties.Groq cfg = appProperties.getGroq();
+        String url = cfg.getBaseUrl() + "/chat/completions";
 
-        List<Map<String, Object>> parts = new ArrayList<>();
-        if (imageBase64 != null && !imageBase64.isBlank()) {
-            parts.add(Map.of("inlineData", Map.of("mimeType", imageMimeType, "data", imageBase64)));
-        }
-        parts.add(Map.of("text", prompt));
-
-        Map<String, Object> content = Map.of("parts", parts);
-        Map<String, Object> genConfig = Map.of(
+        Map<String, Object> message = Map.of("role", "user", "content", prompt);
+        Map<String, Object> body = Map.of(
+                "model", cfg.getModel(),
+                "messages", List.of(message),
                 "temperature", 0.4,
-                "maxOutputTokens", cfg.getMaxOutputTokens(),
-                "responseMimeType", "application/json");
-        Map<String, Object> body = Map.of("contents", List.of(content), "generationConfig", genConfig);
+                "max_tokens", cfg.getMaxOutputTokens(),
+                "response_format", Map.of("type", "json_object"));
 
         try {
-            String raw = geminiRestClient.post()
+            String raw = groqRestClient.post()
                     .uri(url)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + cfg.getApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
                     .body(String.class);
 
             JsonNode root = objectMapper.readTree(raw);
-            return root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText();
+            return root.path("choices").get(0).path("message").path("content").asText();
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            log.error("Groq API quota exceeded: {}", e.getMessage());
+            throw new AiQuotaExhaustedException(
+                    "Hệ thống AI đang tạm hết hạn mức sử dụng, vui lòng thử lại sau ít phút.", e);
         } catch (Exception e) {
-            log.error("Gemini API call failed: {}", e.getMessage());
+            log.error("Groq API call failed: {}", e.getMessage());
             throw new RuntimeException("AI analysis failed: " + e.getMessage(), e);
         }
     }
 
     @Override
     public AiTopTrendsAnalysisResponse analyzeTopTrends(AiTopTrendsAnalysisRequest request) {
-        String apiKey = appProperties.getGemini().getApiKey();
+        String apiKey = appProperties.getGroq().getApiKey();
         if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException("GEMINI_API_KEY is not configured");
+            throw new IllegalStateException("GROQ_API_KEY is not configured");
         }
 
         List<Long> targetIds = request.getKeywordIds();
@@ -165,12 +163,12 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             throw new BadRequestException("No historical trend data found for the requested keywords");
         }
 
-        String prompt = buildTopTrendsPrompt(combinedData, request.getChartImageBase64() != null);
-        String geminiResponseText = callGemini(prompt, request.getChartImageBase64(), request.getChartImageMimeType());
-        return parseTopTrendsGeminiResponse(geminiResponseText, new ArrayList<>(combinedData.keySet()));
+        String prompt = buildTopTrendsPrompt(combinedData);
+        String aiResponseText = callGroq(prompt);
+        return parseTopTrendsAiResponse(aiResponseText, new ArrayList<>(combinedData.keySet()));
     }
 
-    private String buildTopTrendsPrompt(Map<String, List<KeywordTrendResponse>> combinedData, boolean hasImage) {
+    private String buildTopTrendsPrompt(Map<String, List<KeywordTrendResponse>> combinedData) {
         StringBuilder sb = new StringBuilder();
         sb.append("Bạn là chuyên gia phân tích dữ liệu nghiên cứu khoa học hàng đầu. ");
         sb.append("Dưới đây là dữ liệu xu hướng công bố bài báo của nhóm các từ khóa công nghệ đang được quan tâm nhất.\n\n");
@@ -187,10 +185,6 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                 sb.append("\n");
             }
         });
-
-        if (hasImage) {
-            sb.append("\nHình ảnh đính kèm là biểu đồ đường (line chart) hiển thị lịch sử của các từ khóa này để tham khảo trực quan.\n");
-        }
 
         sb.append("""
 
@@ -211,7 +205,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         return sb.toString();
     }
 
-    private AiTopTrendsAnalysisResponse parseTopTrendsGeminiResponse(String json, List<String> analyzedKeywords) {
+    private AiTopTrendsAnalysisResponse parseTopTrendsAiResponse(String json, List<String> analyzedKeywords) {
         try {
             JsonNode node = objectMapper.readTree(json);
 
@@ -239,7 +233,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                     .recommendation(node.path("recommendation").asText())
                     .build();
         } catch (Exception e) {
-            log.error("Failed to parse Gemini top-trends response: {}", json);
+            log.error("Failed to parse AI top-trends response: {}", json);
             return AiTopTrendsAnalysisResponse.builder()
                     .overallVerdict("MIXED")
                     .analyzedKeywords(analyzedKeywords)
@@ -251,7 +245,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         }
     }
 
-    private AiTrendAnalysisResponse parseGeminiResponse(String json, String keyword) {
+    private AiTrendAnalysisResponse parseAiResponse(String json, String keyword) {
         try {
             JsonNode node = objectMapper.readTree(json);
 
@@ -273,7 +267,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                     .recommendation(node.path("recommendation").asText())
                     .build();
         } catch (Exception e) {
-            log.error("Failed to parse Gemini response: {}", json);
+            log.error("Failed to parse AI response: {}", json);
             return AiTrendAnalysisResponse.builder()
                     .keyword(keyword)
                     .verdict("STABLE")
