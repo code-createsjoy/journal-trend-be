@@ -36,11 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class FutureTrendForecastServiceImpl implements FutureTrendForecastService {
 
-    /** Số tháng lịch sử tối đa dùng cho hồi quy / biểu đồ. */
-    private static final int HISTORY_WINDOW = 12;
-    /** Số tháng dự báo về phía trước. */
-    private static final int FORECAST_HORIZON = 6;
-
     private final KeywordRepository keywordRepository;
     private final PublicationTrendRepository publicationTrendRepository;
     private final FutureTrendForecastRepository forecastRepository;
@@ -206,29 +201,31 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
 
     // ────────────────────────────────────────────────────────
     // DỮ LIỆU LỊCH SỬ
-    // Lấy tối đa 12 tháng GẦN NHẤT rồi sắp xếp tăng dần theo thời gian.
-    // (DESC + limit + reverse — tránh lấy nhầm 12 tháng cũ nhất.)
+    // Lấy tối đa `forecast-history-window` tháng GẦN NHẤT rồi sắp xếp tăng dần
+    // theo thời gian. (DESC + limit + reverse — tránh lấy nhầm các tháng cũ nhất.)
     // ────────────────────────────────────────────────────────
     private List<PublicationTrend> recentHistoryAscending(Long keywordId) {
+        int historyWindow = appProperties.getSync().getForecastHistoryWindow();
         List<PublicationTrend> recentDesc = publicationTrendRepository
             .findByKeywordIdOrderByYearDescMonthDesc(keywordId)
             .stream()
-            .limit(HISTORY_WINDOW)
+            .limit(historyWindow)
             .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         Collections.reverse(recentDesc);
         return recentDesc;
     }
 
     /**
-     * Cắt {@value #HISTORY_WINDOW} tháng GẦN NHẤT từ list lịch sử đã sắp tăng dần.
+     * Cắt {@code forecast-history-window} tháng GẦN NHẤT từ list lịch sử đã sắp tăng dần.
      * Dùng trong job (list được gom sẵn từ 1 query) để tránh N+1.
      */
     private List<PublicationTrend> recentWindow(List<PublicationTrend> ascHistory) {
         if (ascHistory == null || ascHistory.isEmpty()) {
             return List.of();
         }
+        int historyWindow = appProperties.getSync().getForecastHistoryWindow();
         int size = ascHistory.size();
-        int from = Math.max(0, size - HISTORY_WINDOW);
+        int from = Math.max(0, size - historyWindow);
         return ascHistory.subList(from, size);
     }
 
@@ -282,18 +279,20 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     }
 
     // ────────────────────────────────────────────────────────
-    // CÔNG THỨC 5 — DỰ BÁO 6 THÁNG (Linear Forecast)
+    // CÔNG THỨC 5 — DỰ BÁO N THÁNG (Linear Forecast)
+    // Số tháng dự báo = `forecast-horizon` (cấu hình).
     // Nguồn: Wikipedia "Simple Linear Regression" — y = slope*x + intercept
     // ────────────────────────────────────────────────────────
     private List<ForecastMonthDto> buildForecast(
             List<PublicationTrend> history, double slope, double intercept) {
 
+        int horizon = appProperties.getSync().getForecastHorizon();
         int n = history.size();
         PublicationTrend last = history.get(n - 1);
         YearMonth lastMonth = YearMonth.of(last.getYear(), last.getMonth());
 
         List<ForecastMonthDto> result = new ArrayList<>();
-        for (int m = 1; m <= FORECAST_HORIZON; m++) {
+        for (int m = 1; m <= horizon; m++) {
             double xFuture   = (n - 1) + m;
             int paperCount   = Math.max(0, (int) Math.round(slope * xFuture + intercept));
             YearMonth target = lastMonth.plusMonths(m);
