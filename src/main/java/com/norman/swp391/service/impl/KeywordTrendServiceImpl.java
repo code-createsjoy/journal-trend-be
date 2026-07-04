@@ -7,6 +7,7 @@ import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.PublicationTrend;
 import com.norman.swp391.entity.enums.PaperReviewStatus;
 import com.norman.swp391.entity.enums.PaperStatus;
+import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.mapper.KeywordMapper;
 import com.norman.swp391.repository.KeywordRepository;
@@ -15,6 +16,7 @@ import com.norman.swp391.repository.PublicationTrendRepository;
 import com.norman.swp391.service.KeywordTrendService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DateTimeException;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -24,7 +26,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -134,11 +135,11 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<Keyword> findTrendingKeywords() {
+    public List<Keyword> findTrendingKeywords(Integer year, Integer month) {
         int consecutiveMonths = appProperties.getSync().getTrendingConsecutiveMonths();
         BigDecimal threshold = BigDecimal.valueOf(appProperties.getSync().getTrendingThresholdPercent());
 
-        YearMonth end = YearMonth.now().minusMonths(1);
+        YearMonth end = resolveTargetMonth(year, month);
         List<YearMonth> targetMonths = new ArrayList<>();
         YearMonth cursor = end.minusMonths(consecutiveMonths - 1L);
         for (int i = 0; i < consecutiveMonths; i++) {
@@ -178,23 +179,29 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         return trending;
     }
 
+    /**
+     * Top keyword theo trend score CỦA RIÊNG tháng được chọn — không áp dụng luật
+     * "trending" 3-tháng-liên-tiếp (BR-04). Dùng cho tính năng so sánh theo tháng trên UI,
+     * nên một tháng vẫn có xếp hạng dù các tháng trước đó không đủ dữ liệu để tính chuỗi trending.
+     */
     @Override
     @Transactional(readOnly = true)
-    public List<TrendingKeywordResponse> findTrendingKeywordResponses() {
-        List<Keyword> keywords = findTrendingKeywords();
-        List<TrendingKeywordResponse> responses = new ArrayList<>();
-        YearMonth current = YearMonth.now().minusMonths(1);
-        int rank = 1;
-        
-        // Sort by trend score desc, nulls last
-        keywords.sort(Comparator.comparing(Keyword::getTrendScore,
-                        Comparator.nullsLast(Comparator.reverseOrder()))
-                .thenComparing(Keyword::getPaperCount, Comparator.reverseOrder()));
+    public List<TrendingKeywordResponse> findTrendingKeywordResponses(Integer year, Integer month) {
+        YearMonth target = resolveTargetMonth(year, month);
+        List<PublicationTrend> trends = publicationTrendRepository.findByYearAndMonth(
+                target.getYear(), target.getMonthValue());
 
-        for (Keyword keyword : keywords) {
-            Optional<PublicationTrend> latest = publicationTrendRepository.findByKeywordIdAndYearAndMonth(
-                    keyword.getKeywordId(), current.getYear(), current.getMonthValue());
-            responses.add(KeywordMapper.toTrendingResponse(keyword, latest.orElse(null), rank++));
+        List<PublicationTrend> sorted = trends.stream()
+                .filter(t -> t.getKeyword() != null)
+                .sorted(Comparator.comparing(PublicationTrend::getDeltaPercent,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(PublicationTrend::getPaperCount, Comparator.reverseOrder()))
+                .toList();
+
+        List<TrendingKeywordResponse> responses = new ArrayList<>();
+        int rank = 1;
+        for (PublicationTrend trend : sorted) {
+            responses.add(KeywordMapper.toTrendingResponse(trend.getKeyword(), trend, rank++));
         }
         return responses;
     }
@@ -249,7 +256,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
     @Override
     @Transactional(readOnly = true)
     public List<TrendingTopicResponse> findTrendingTopics() {
-        List<Keyword> trendingKeywords = findTrendingKeywords();
+        List<Keyword> trendingKeywords = findTrendingKeywords(null, null);
         
         // Group by Keyword.domain
         Map<String, List<Keyword>> grouped = trendingKeywords.stream()
@@ -309,5 +316,25 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         }
         double percent = ((double) (current - previous) / previous) * 100.0;
         return BigDecimal.valueOf(percent).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Suy ra tháng mục tiêu từ tham số year/month của client.
+     * - Không truyền gì: mặc định tháng trước (hành vi cũ).
+     * - Truyền thiếu 1 trong 2: báo lỗi rõ ràng thay vì âm thầm bỏ qua filter.
+     * - Truyền cả 2 nhưng không hợp lệ (vd. month=13): báo lỗi 400 thay vì crash 500.
+     */
+    private YearMonth resolveTargetMonth(Integer year, Integer month) {
+        if (year == null && month == null) {
+            return YearMonth.now().minusMonths(1);
+        }
+        if (year == null || month == null) {
+            throw new BadRequestException("year and month must be provided together");
+        }
+        try {
+            return YearMonth.of(year, month);
+        } catch (DateTimeException ex) {
+            throw new BadRequestException("Invalid year/month: " + ex.getMessage());
+        }
     }
 }

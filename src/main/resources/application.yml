@@ -121,6 +121,8 @@ app:
     early-stop-consecutive-empty-pages: ${SYNC_EARLY_STOP_PAGES:3}
     forecast-cron: ${FORECAST_CRON:0 0 4 1 * *}
     forecast-min-months: ${FORECAST_MIN_MONTHS:6}
+    forecast-history-window: ${FORECAST_HISTORY_WINDOW:12}
+    forecast-horizon: ${FORECAST_HORIZON:6}
     forecast-max-keywords: ${FORECAST_MAX_KEYWORDS:200}
     forecast-weight-slope: ${FORECAST_WEIGHT_SLOPE:0.5}
     forecast-weight-acc: ${FORECAST_WEIGHT_ACC:0.3}

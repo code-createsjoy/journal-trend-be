@@ -141,7 +141,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
         List<Long> targetIds = request.getKeywordIds();
         if (targetIds == null || targetIds.isEmpty()) {
-            targetIds = keywordTrendService.findTrendingKeywords().stream()
+            targetIds = keywordTrendService.findTrendingKeywords(null, null).stream()
                     .filter(k -> k != null && k.getKeywordId() != null)
                     .limit(10)
                     .map(k -> k.getKeywordId())

@@ -9,6 +9,7 @@ import com.norman.swp391.dto.response.keyword.ForecastMonthDto;
 import com.norman.swp391.entity.FutureTrendForecast;
 import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.PublicationTrend;
+import com.norman.swp391.entity.enums.ForecastCategory;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.repository.FutureTrendForecastRepository;
 import com.norman.swp391.repository.KeywordRepository;
@@ -34,11 +35,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class FutureTrendForecastServiceImpl implements FutureTrendForecastService {
-
-    /** Số tháng lịch sử tối đa dùng cho hồi quy / biểu đồ. */
-    private static final int HISTORY_WINDOW = 12;
-    /** Số tháng dự báo về phía trước. */
-    private static final int FORECAST_HORIZON = 6;
 
     private final KeywordRepository keywordRepository;
     private final PublicationTrendRepository publicationTrendRepository;
@@ -127,14 +123,14 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
             double currentTotal = Math.max(1.0, m.keyword().getPaperCount());
             double growthRate   = (predictedTotal / currentTotal) * 100.0;
 
-            String reason = classifyReason(sTPS, m.acc());
+            String category = ForecastCategory.classify(sTPS, m.acc()).name();
 
             toSave.add(FutureTrendForecast.builder()
                 .keyword(m.keyword())
                 .potentialScore(bd(sTPS, 2))
                 .predictedPapers6m(predictedTotal)
                 .predictedGrowthRate(bd(growthRate, 2))
-                .forecastReason(reason)
+                .forecastReason(category)
                 .forecastMonthsJson(toJson(forecastMonths))
                 .calculatedAt(jobStart)
                 .build());
@@ -205,29 +201,31 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
 
     // ────────────────────────────────────────────────────────
     // DỮ LIỆU LỊCH SỬ
-    // Lấy tối đa 12 tháng GẦN NHẤT rồi sắp xếp tăng dần theo thời gian.
-    // (DESC + limit + reverse — tránh lấy nhầm 12 tháng cũ nhất.)
+    // Lấy tối đa `forecast-history-window` tháng GẦN NHẤT rồi sắp xếp tăng dần
+    // theo thời gian. (DESC + limit + reverse — tránh lấy nhầm các tháng cũ nhất.)
     // ────────────────────────────────────────────────────────
     private List<PublicationTrend> recentHistoryAscending(Long keywordId) {
+        int historyWindow = appProperties.getSync().getForecastHistoryWindow();
         List<PublicationTrend> recentDesc = publicationTrendRepository
             .findByKeywordIdOrderByYearDescMonthDesc(keywordId)
             .stream()
-            .limit(HISTORY_WINDOW)
+            .limit(historyWindow)
             .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         Collections.reverse(recentDesc);
         return recentDesc;
     }
 
     /**
-     * Cắt {@value #HISTORY_WINDOW} tháng GẦN NHẤT từ list lịch sử đã sắp tăng dần.
+     * Cắt {@code forecast-history-window} tháng GẦN NHẤT từ list lịch sử đã sắp tăng dần.
      * Dùng trong job (list được gom sẵn từ 1 query) để tránh N+1.
      */
     private List<PublicationTrend> recentWindow(List<PublicationTrend> ascHistory) {
         if (ascHistory == null || ascHistory.isEmpty()) {
             return List.of();
         }
+        int historyWindow = appProperties.getSync().getForecastHistoryWindow();
         int size = ascHistory.size();
-        int from = Math.max(0, size - HISTORY_WINDOW);
+        int from = Math.max(0, size - historyWindow);
         return ascHistory.subList(from, size);
     }
 
@@ -281,18 +279,20 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     }
 
     // ────────────────────────────────────────────────────────
-    // CÔNG THỨC 5 — DỰ BÁO 6 THÁNG (Linear Forecast)
+    // CÔNG THỨC 5 — DỰ BÁO N THÁNG (Linear Forecast)
+    // Số tháng dự báo = `forecast-horizon` (cấu hình).
     // Nguồn: Wikipedia "Simple Linear Regression" — y = slope*x + intercept
     // ────────────────────────────────────────────────────────
     private List<ForecastMonthDto> buildForecast(
             List<PublicationTrend> history, double slope, double intercept) {
 
+        int horizon = appProperties.getSync().getForecastHorizon();
         int n = history.size();
         PublicationTrend last = history.get(n - 1);
         YearMonth lastMonth = YearMonth.of(last.getYear(), last.getMonth());
 
         List<ForecastMonthDto> result = new ArrayList<>();
-        for (int m = 1; m <= FORECAST_HORIZON; m++) {
+        for (int m = 1; m <= horizon; m++) {
             double xFuture   = (n - 1) + m;
             int paperCount   = Math.max(0, (int) Math.round(slope * xFuture + intercept));
             YearMonth target = lastMonth.plusMonths(m);
@@ -309,12 +309,6 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     // ────────────────────────────────────────────────────────
     // HỖ TRỢ
     // ────────────────────────────────────────────────────────
-    private String classifyReason(double sTPS, double acc) {
-        if (sTPS >= 80 && acc > 0) return "Bùng nổ sớm";
-        if (sTPS >= 60)            return "Tăng trưởng vượt bậc";
-        return "Tăng trưởng ổn định";
-    }
-
     private BigDecimal bd(double value, int scale) {
         return BigDecimal.valueOf(value).setScale(scale, RoundingMode.HALF_UP);
     }

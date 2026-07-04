@@ -41,8 +41,8 @@ public class KeywordServiceImpl implements KeywordService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TrendingKeywordResponse> getTrendingKeywords() {
-        return keywordTrendService.findTrendingKeywordResponses();
+    public List<TrendingKeywordResponse> getTrendingKeywords(Integer year, Integer month) {
+        return keywordTrendService.findTrendingKeywordResponses(year, month);
     }
 
     @Override
