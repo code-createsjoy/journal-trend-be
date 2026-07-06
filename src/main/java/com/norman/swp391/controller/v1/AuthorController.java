@@ -3,6 +3,7 @@ package com.norman.swp391.controller.v1;
 import com.norman.swp391.dto.common.ApiResponse;
 import com.norman.swp391.dto.response.author.AuthorDetailResponse;
 import com.norman.swp391.dto.response.author.AuthorResponse;
+import com.norman.swp391.dto.response.author.AuthorSpotlightResponse;
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.paper.PaperResponse;
 import com.norman.swp391.service.AuthorService;
@@ -30,6 +31,14 @@ public class AuthorController {
     @GetMapping("/featured")
     public ApiResponse<PageResponse<AuthorResponse>> getFeatured(@PageableDefault(size = 10) Pageable pageable) {
         return ApiResponse.ok(authorService.getFeatured(pageable));
+    }
+
+    /**
+     * 3 tác giả nổi bật: nhiều paper nhất, citation cao nhất, h-index cao nhất.
+     */
+    @GetMapping("/spotlight")
+    public ApiResponse<AuthorSpotlightResponse> getSpotlight() {
+        return ApiResponse.ok(authorService.getSpotlight());
     }
 
     /**

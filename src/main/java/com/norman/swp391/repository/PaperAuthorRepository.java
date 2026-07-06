@@ -33,6 +33,18 @@ public interface PaperAuthorRepository extends JpaRepository<PaperAuthor, Long> 
  */
     long countByAuthorId(Long authorId);
 
+    /**
+     * Đếm số paper ACTIVE của 1 tác giả — dùng khi cần số liệu nhất quán với
+     * findAuthorsOrderByPaperCountDesc (cũng chỉ tính paper ACTIVE).
+     */
+    @Query("""
+        SELECT COUNT(DISTINCT pa.paper)
+        FROM PaperAuthor pa
+        WHERE pa.author.id = :authorId
+          AND pa.paper.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        """)
+    long countActiveByAuthorId(@Param("authorId") Long authorId);
+
     @Query("""
         SELECT pa.author, COUNT(DISTINCT p)
         FROM PaperAuthor pa
@@ -44,4 +56,18 @@ public interface PaperAuthorRepository extends JpaRepository<PaperAuthor, Long> 
         ORDER BY COUNT(DISTINCT p) DESC, pa.author.hIndex DESC
         """)
     List<Object[]> findTopAuthorsByKeywordIds(@Param("keywordIds") java.util.Collection<Long> keywordIds, org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Xếp hạng tác giả theo tổng số paper (ACTIVE) — dùng cho "author có nhiều paper nhất".
+     * Trả về Object[]{ Author, Long count }.
+     */
+    @Query("""
+        SELECT pa.author, COUNT(DISTINCT p)
+        FROM PaperAuthor pa
+        JOIN pa.paper p
+        WHERE p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        GROUP BY pa.author, pa.author.id, pa.author.name, pa.author.affiliation, pa.author.citationCount, pa.author.hIndex, pa.author.sourceType, pa.author.sourceIdentifier
+        ORDER BY COUNT(DISTINCT p) DESC
+        """)
+    List<Object[]> findAuthorsOrderByPaperCountDesc(org.springframework.data.domain.Pageable pageable);
 }

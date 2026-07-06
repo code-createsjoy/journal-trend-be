@@ -2,6 +2,7 @@ package com.norman.swp391.service.impl;
 
 import com.norman.swp391.dto.response.author.AuthorDetailResponse;
 import com.norman.swp391.dto.response.author.AuthorResponse;
+import com.norman.swp391.dto.response.author.AuthorSpotlightResponse;
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.paper.PaperResponse;
 import com.norman.swp391.entity.Author;
@@ -109,5 +110,40 @@ public class AuthorServiceImpl implements AuthorService {
                 .topKeywords(topKeywords)
                 .popularPapers(popularPapers)
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AuthorSpotlightResponse getSpotlight() {
+        AuthorResponse mostPapers = null;
+        List<Object[]> topByPapers = paperAuthorRepository.findAuthorsOrderByPaperCountDesc(PageRequest.of(0, 1));
+        if (!topByPapers.isEmpty()) {
+            Object[] row = topByPapers.get(0);
+            mostPapers = AuthorMapper.toResponse((Author) row[0]);
+            mostPapers.setPapers(((Long) row[1]).intValue());
+        }
+
+        List<Author> topByCitations = authorRepository.findTopByCitationCount(PageRequest.of(0, 1));
+        AuthorResponse mostCitations = topByCitations.isEmpty()
+                ? null
+                : toResponseWithPaperCount(topByCitations.get(0));
+
+        List<Author> topByHIndex = authorRepository.findTopByHIndex(PageRequest.of(0, 1));
+        AuthorResponse mostHIndex = topByHIndex.isEmpty()
+                ? null
+                : toResponseWithPaperCount(topByHIndex.get(0));
+
+        return AuthorSpotlightResponse.builder()
+                .mostPapers(mostPapers)
+                .mostCitations(mostCitations)
+                .mostHIndex(mostHIndex)
+                .build();
+    }
+
+    private AuthorResponse toResponseWithPaperCount(Author author) {
+        AuthorResponse response = AuthorMapper.toResponse(author);
+        // Dùng count ACTIVE-only để nhất quán với mostPapers (findAuthorsOrderByPaperCountDesc)
+        response.setPapers((int) paperAuthorRepository.countActiveByAuthorId(author.getId()));
+        return response;
     }
 }

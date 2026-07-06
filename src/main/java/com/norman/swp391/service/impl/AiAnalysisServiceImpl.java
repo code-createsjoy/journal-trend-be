@@ -62,36 +62,36 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
     private String buildPrompt(String term, List<KeywordTrendResponse> data) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Bạn là chuyên gia phân tích xu hướng nghiên cứu học thuật. ");
-        sb.append("Hãy phân tích dữ liệu xu hướng bài báo khoa học dưới đây và đưa ra nhận định chuyên sâu.\n\n");
-        sb.append("Từ khóa nghiên cứu: **").append(term).append("**\n\n");
-        sb.append("Dữ liệu số lượng bài báo theo tháng (").append(data.size()).append(" tháng gần nhất):\n");
+        sb.append("You are an expert analyst specializing in academic research trends. ");
+        sb.append("Analyze the scientific publication trend data below and provide an in-depth assessment.\n\n");
+        sb.append("Research keyword: **").append(term).append("**\n\n");
+        sb.append("Monthly paper count data (last ").append(data.size()).append(" months):\n");
 
         for (KeywordTrendResponse d : data) {
-            sb.append(String.format("  - %d/%d: %d bài báo", d.getMonth(), d.getYear(), d.getPaperCount()));
+            sb.append(String.format("  - %d/%d: %d papers", d.getMonth(), d.getYear(), d.getPaperCount()));
             if (d.getDeltaPercent() != null) {
-                sb.append(String.format(" (thay đổi: %+.1f%%)", d.getDeltaPercent().doubleValue()));
+                sb.append(String.format(" (change: %+.1f%%)", d.getDeltaPercent().doubleValue()));
             }
             sb.append("\n");
         }
 
         sb.append("""
 
-                Hãy phân tích và trả lời CHÍNH XÁC theo định dạng JSON sau (không thêm markdown, không thêm text ngoài JSON):
+                Analyze the data and respond EXACTLY in the following JSON format (no markdown, no text outside the JSON):
                 {
-                  "verdict": "GROWING hoặc STABLE hoặc DECLINING",
-                  "feasibilityScore": <số nguyên 0-100>,
-                  "analysis": "<phân tích tổng quan chi tiết bằng tiếng Việt>",
-                  "keyInsights": ["<điểm nhận xét 1>", "<điểm nhận xét 2>", "<điểm nhận xét 3>"],
-                  "recommendation": "<khuyến nghị cho nhà nghiên cứu bằng tiếng Việt>"
+                  "verdict": "GROWING or STABLE or DECLINING",
+                  "feasibilityScore": <integer 0-100>,
+                  "analysis": "<detailed overall analysis, written in English>",
+                  "keyInsights": ["<insight 1, written in English>", "<insight 2, written in English>", "<insight 3, written in English>"],
+                  "recommendation": "<recommendation for the researcher, written in English>"
                 }
 
-                Giải thích feasibilityScore:
-                - 80-100: Lĩnh vực đang bùng nổ, rất khả thi để nghiên cứu
-                - 60-79: Lĩnh vực phát triển tốt, khả thi
-                - 40-59: Ổn định, cần cân nhắc kỹ
-                - 20-39: Xu hướng đi xuống, ít khả thi
-                - 0-19: Lĩnh vực đang suy giảm mạnh
+                feasibilityScore guide:
+                - 80-100: Booming field, highly feasible for research
+                - 60-79: Growing well, feasible
+                - 40-59: Stable, needs careful consideration
+                - 20-39: Declining trend, less feasible
+                - 0-19: Field is declining sharply
                 """);
 
         return sb.toString();
@@ -170,17 +170,17 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
     private String buildTopTrendsPrompt(Map<String, List<KeywordTrendResponse>> combinedData) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Bạn là chuyên gia phân tích dữ liệu nghiên cứu khoa học hàng đầu. ");
-        sb.append("Dưới đây là dữ liệu xu hướng công bố bài báo của nhóm các từ khóa công nghệ đang được quan tâm nhất.\n\n");
-        sb.append("Hãy thực hiện phân tích đối sánh chuyên sâu giữa các xu hướng này.\n\n");
-        sb.append("DỮ LIỆU SỐ LƯỢNG BÀI BÁO THEO THÁNG:\n");
+        sb.append("You are a leading expert in scientific research data analysis. ");
+        sb.append("Below is publication trend data for the group of most-watched technology keywords.\n\n");
+        sb.append("Perform an in-depth comparative analysis between these trends.\n\n");
+        sb.append("MONTHLY PAPER COUNT DATA:\n");
 
         combinedData.forEach((term, trends) -> {
-            sb.append(String.format("\n* Từ khóa: **%s**\n", term));
+            sb.append(String.format("\n* Keyword: **%s**\n", term));
             for (KeywordTrendResponse d : trends) {
-                sb.append(String.format("  - %d/%d: %d bài báo", d.getMonth(), d.getYear(), d.getPaperCount()));
+                sb.append(String.format("  - %d/%d: %d papers", d.getMonth(), d.getYear(), d.getPaperCount()));
                 if (d.getDeltaPercent() != null) {
-                    sb.append(String.format(" (tỷ lệ tăng: %+.1f%%)", d.getDeltaPercent().doubleValue()));
+                    sb.append(String.format(" (growth rate: %+.1f%%)", d.getDeltaPercent().doubleValue()));
                 }
                 sb.append("\n");
             }
@@ -188,17 +188,17 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
         sb.append("""
 
-                Hãy phân tích so sánh và trả lời CHÍNH XÁC theo định dạng JSON sau (không thêm markdown, không thêm text ngoài JSON):
+                Perform a comparative analysis and respond EXACTLY in the following JSON format (no markdown, no text outside the JSON):
                 {
-                  "overallVerdict": "GROWING hoặc STABLE hoặc MIXED",
-                  "topGrowingKeywords": ["<Từ khóa 1 tăng mạnh nhất>", "<Từ khóa 2 tăng mạnh nhất>"],
-                  "analysis": "<Phân tích so sánh chi tiết các đường xu hướng, nêu rõ từ khóa nào đang tăng tốc, từ khóa nào đang bão hòa bằng tiếng Việt>",
+                  "overallVerdict": "GROWING or STABLE or MIXED",
+                  "topGrowingKeywords": ["<keyword 1 growing fastest>", "<keyword 2 growing fastest>"],
+                  "analysis": "<detailed comparative analysis of the trend lines, indicating which keywords are accelerating and which are saturating, written in English>",
                   "keyInsights": [
-                    "<Nhận xét quan trọng 1>",
-                    "<Nhận xét quan trọng 2>",
-                    "<Nhận xét quan trọng 3>"
+                    "<key insight 1, written in English>",
+                    "<key insight 2, written in English>",
+                    "<key insight 3, written in English>"
                   ],
-                  "recommendation": "<Khuyên nhà nghiên cứu nên lựa chọn từ khóa nào để bắt đầu nghiên cứu mới có tỷ lệ đón đầu xu hướng cao nhất bằng tiếng Việt>"
+                  "recommendation": "<advise the researcher which keyword to pick for a new research direction with the highest chance of riding the trend, written in English>"
                 }
                 """);
 
