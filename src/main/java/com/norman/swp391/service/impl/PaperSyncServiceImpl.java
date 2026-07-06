@@ -174,6 +174,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
         // [Fix #6] Gộp biến — chỉ dùng totalPapersInserted cho cả limit check
         Set<Long> newPaperIds = new HashSet<>();
+        // Author mới tạo trong chính lần sync này — enrich toàn bộ, không cap ở 50.
+        // Giữ nguyên entity trong bộ nhớ (không query lại DB bằng IN-clause để tránh
+        // vượt giới hạn 2100 tham số của SQL Server khi có hàng nghìn author mới).
+        List<Author> newAuthorsThisRun = new ArrayList<>();
         boolean openAlexEnabled = false;
 
         // Metrics Tracking
@@ -348,7 +352,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                             newInPage++;
                             ingestBuffer.add(metadata);
                             if (ingestBuffer.size() >= ingestBatchSize) {
-                                int inserted = flushIngest(ingestBuffer, newPaperIds, maxPapers - totalPapersInserted,
+                                int inserted = flushIngest(ingestBuffer, newPaperIds, newAuthorsThisRun, maxPapers - totalPapersInserted,
                                         knownDois, knownSourceIds);
                                 totalPapersInserted += inserted;
                                 ingestBuffer.clear();
@@ -395,7 +399,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             }
 
             if (!ingestBuffer.isEmpty()) {
-                int inserted = flushIngest(ingestBuffer, newPaperIds, maxPapers - totalPapersInserted,
+                int inserted = flushIngest(ingestBuffer, newPaperIds, newAuthorsThisRun, maxPapers - totalPapersInserted,
                         knownDois, knownSourceIds);
                 totalPapersInserted += inserted;
             }
@@ -415,7 +419,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                     () -> notificationService.notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords(null, null)));
             runPostSyncTask("notifyNewPapers",
                     () -> notificationService.notifyNewPapersForSubscriptions(newPaperIds));
-            runPostSyncTask("enrichAuthorStats", () -> enrichAuthorStats(50)); // chỉ xử lý authors mới từ sync này
+            // Enrich TOÀN BỘ author mới tạo trong chính lần sync này (không cap ở 50)
+            runPostSyncTask("enrichNewAuthorStats", () -> enrichNewAuthors(newAuthorsThisRun));
+            // Dọn dần backlog author cũ (nếu có) chưa từng được enrich
+            runPostSyncTask("enrichAuthorStats", () -> enrichAuthorStats(50));
             runPostSyncTask("updateJournalImpactFactors",
                     () -> journalService.calculateAndUpdateJournalImpactFactors());
             runPostSyncTask("evictDashboardCache", () -> {
@@ -466,6 +473,27 @@ public class PaperSyncServiceImpl implements PaperSyncService {
     public int enrichAuthorStats(int limit) {
         List<Author> toEnrich = authorRepository.findUnenrichedAuthors(
                 PageRequest.of(0, limit));
+        return enrichAuthors(toEnrich);
+    }
+
+    /**
+     * Enrich TOÀN BỘ author mới tạo trong chính lần sync này (không cap số lượng) —
+     * dùng thẳng list entity đã có sẵn trong bộ nhớ, KHÔNG query lại DB bằng IN-clause
+     * (tránh vượt giới hạn 2100 tham số của SQL Server khi có hàng nghìn author mới).
+     */
+    private int enrichNewAuthors(List<Author> newAuthors) {
+        if (newAuthors == null || newAuthors.isEmpty()) {
+            return 0;
+        }
+        List<Author> toEnrich = newAuthors.stream()
+                .filter(a -> "OPENALEX".equalsIgnoreCase(a.getSourceType())
+                        && StringUtils.hasText(a.getSourceIdentifier())
+                        && a.getHIndex() == null)
+                .toList();
+        return enrichAuthors(toEnrich);
+    }
+
+    private int enrichAuthors(List<Author> toEnrich) {
         if (toEnrich.isEmpty()) {
             return 0;
         }
@@ -518,8 +546,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
     /**
      * Flush ingest buffer vào DB. Cập nhật knownDois/knownSourceIds sau khi insert.
      */
-    private int flushIngest(List<ExternalPaperMetadata> batch, Set<Long> newPaperIds, int maxRemaining,
-                            Set<String> knownDois, Set<String> knownSourceIds) {
+    private int flushIngest(List<ExternalPaperMetadata> batch, Set<Long> newPaperIds, List<Author> newAuthorsThisRun,
+                            int maxRemaining, Set<String> knownDois, Set<String> knownSourceIds) {
         if (batch.isEmpty() || maxRemaining <= 0) {
             return 0;
         }
@@ -594,6 +622,13 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 }
             }
 
+            // Filter out papers that don't have any keyword in the allowed domains BEFORE
+            // creating authors/papers/keywords for them — avoids orphan Author rows for
+            // papers that end up rejected by the domain whitelist.
+            List<ExternalPaperMetadata> filteredMetas = allowedDomainsLower.isEmpty()
+                    ? validMetas
+                    : validMetas.stream().filter(m -> hasAllowedDomainKeyword(m, allowedDomainsLower)).toList();
+
             // 2. Bulk fetch existing keywords
             Set<String> allKeywordTerms = new HashSet<>();
             for (ExternalPaperMetadata metadata : validMetas) {
@@ -650,7 +685,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             // 3. [Fix #3] Bulk fetch existing authors — by sourceId AND by name (eliminates N+1)
             Set<String> allAuthorIds = new HashSet<>();
             Set<String> allAuthorNames = new HashSet<>();
-            for (ExternalPaperMetadata metadata : validMetas) {
+            for (ExternalPaperMetadata metadata : filteredMetas) {
                 List<ExternalAuthorInfo> authorInfos = new ArrayList<>();
                 if (metadata.authorDetails() != null) {
                     authorInfos.addAll(metadata.authorDetails());
@@ -692,8 +727,9 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
             Map<String, Author> authorByNameAffiliation = new HashMap<>();
             List<Author> authorsToSave = new ArrayList<>();
+            List<Author> newlyCreatedAuthors = new ArrayList<>();
 
-            for (ExternalPaperMetadata metadata : validMetas) {
+            for (ExternalPaperMetadata metadata : filteredMetas) {
                 List<ExternalAuthorInfo> authorInfos = new ArrayList<>();
                 if (metadata.authorDetails() != null && !metadata.authorDetails().isEmpty()) {
                     authorInfos.addAll(metadata.authorDetails());
@@ -750,6 +786,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                         // Also add to bulk name lookup cache so future lookups find it
                         authorsByNameLower.computeIfAbsent(trimmed.toLowerCase(), k -> new ArrayList<>()).add(author);
                         authorsToSave.add(author);
+                        newlyCreatedAuthors.add(author);
                     } else {
                         boolean dirty = false;
                         if (StringUtils.hasText(info.sourceIdentifier()) && !Objects.equals(info.sourceIdentifier(), author.getSourceIdentifier())) {
@@ -781,6 +818,9 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 }
                 authorRepository.saveAll(authorsToSave);
             }
+            for (Author a : newlyCreatedAuthors) {
+                if (a.getId() != null) newAuthorsThisRun.add(a);
+            }
 
             // 4. Batch process journals using local cache to avoid redundant database searches
             Map<String, Journal> journalMap = new HashMap<>();
@@ -788,23 +828,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             Map<ExternalPaperMetadata, Paper> metaToPaperMap = new HashMap<>();
             Set<Paper> newPapersSet = new HashSet<>();
 
-            for (ExternalPaperMetadata metadata : validMetas) {
-                // Skip papers whose keywords are all filtered out by domain whitelist
-                if (!allowedDomainsLower.isEmpty()) {
-                    boolean hasValidKeyword = false;
-                    if (metadata.keywords() != null) {
-                        for (ExternalKeywordInfo kw : metadata.keywords()) {
-                            if (!StringUtils.hasText(kw.term())) continue;
-                            String d = StringUtils.hasText(kw.domain()) ? kw.domain().trim().toLowerCase() : "general";
-                            if (allowedDomainsLower.contains(d)) {
-                                hasValidKeyword = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!hasValidKeyword) continue;
-                }
-
+            for (ExternalPaperMetadata metadata : filteredMetas) {
                 Paper paper = null;
                 if (StringUtils.hasText(metadata.sourceIdentifier()) && StringUtils.hasText(metadata.sourceType())) {
                     String key = metadata.sourceType().toUpperCase() + ":" + metadata.sourceIdentifier().toLowerCase().trim();
@@ -910,7 +934,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             List<PaperKeyword> paperKeywordsToSave = new ArrayList<>();
             List<PaperAuthor> paperAuthorsToSave = new ArrayList<>();
 
-            for (ExternalPaperMetadata metadata : validMetas) {
+            for (ExternalPaperMetadata metadata : filteredMetas) {
                 Paper paper = metaToPaperMap.get(metadata);
                 if (paper == null || paper.getId() == null) continue;
 
@@ -1039,6 +1063,16 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         });
 
         return saved != null ? saved : 0;
+    }
+
+    private boolean hasAllowedDomainKeyword(ExternalPaperMetadata metadata, Set<String> allowedDomainsLower) {
+        if (metadata.keywords() == null) return false;
+        for (ExternalKeywordInfo kw : metadata.keywords()) {
+            if (!StringUtils.hasText(kw.term())) continue;
+            String d = StringUtils.hasText(kw.domain()) ? kw.domain().trim().toLowerCase() : "general";
+            if (allowedDomainsLower.contains(d)) return true;
+        }
+        return false;
     }
 
     private String truncateText(String text, int maxLength) {

@@ -8,6 +8,7 @@ import com.norman.swp391.integration.model.ExternalAuthorInfo;
 import com.norman.swp391.integration.model.ExternalKeywordInfo;
 import com.norman.swp391.integration.model.ExternalAuthorProfile;
 import com.norman.swp391.integration.model.ExternalPaperMetadata;
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -59,7 +60,7 @@ public class OpenAlexClient {
         builder.queryParam("filter", filterStr);
         appendMailto(builder);
         appendApiKey(builder);
-        JsonNode root = getJson(builder.toUriString());
+        JsonNode root = getJson(toUri(builder));
         List<ExternalPaperMetadata> results = new ArrayList<>();
         for (JsonNode work : root.path("results")) {
             results.add(mapWork(work));
@@ -78,7 +79,7 @@ public class OpenAlexClient {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url);
         appendMailto(builder);
         appendApiKey(builder);
-        JsonNode node = fetchJsonSafe(builder.toUriString());
+        JsonNode node = fetchJsonSafe(toUri(builder));
         if (node == null || node.isMissingNode()) {
             return Optional.empty();
         }
@@ -131,7 +132,13 @@ public class OpenAlexClient {
                     .queryParam("select", "id,cited_by_count,works_count,summary_stats");
             appendMailto(builder);
             appendApiKey(builder);
-            JsonNode root = fetchJsonSafe(builder.toUriString());
+            URI requestUri = toUri(builder);
+            log.info("[SYNC] fetchAuthorsByIds: requesting {} ids, url={}", batch.size(),
+                    requestUri.toString().replaceAll("api_key=[^&]+", "api_key=***"));
+            JsonNode root = fetchJsonSafe(requestUri);
+            int metaCount = (root != null) ? root.path("meta").path("count").asInt(-1) : -1;
+            int resultsSize = (root != null && root.path("results").isArray()) ? root.path("results").size() : -1;
+            log.info("[SYNC] fetchAuthorsByIds: response meta.count={}, results.size={}", metaCount, resultsSize);
             if (root != null && root.has("results") && root.path("results").isArray()) {
                 for (JsonNode author : root.path("results")) {
                     ExternalAuthorProfile profile = mapAuthorProfile(author);
@@ -150,7 +157,7 @@ public class OpenAlexClient {
                 appProperties.getOpenalex().getBaseUrl() + "/authors/" + normalized);
         appendMailto(builder);
         appendApiKey(builder);
-        JsonNode node = fetchJsonSafe(builder.toUriString());
+        JsonNode node = fetchJsonSafe(toUri(builder));
         if (node == null || node.isMissingNode()) {
             return Optional.empty();
         }
@@ -352,22 +359,30 @@ public class OpenAlexClient {
     /**
      * Lấy dữ liệu: getJson.
      */
-    private JsonNode getJson(String url) {
-        JsonNode node = fetchJsonSafe(url);
+    private JsonNode getJson(URI uri) {
+        JsonNode node = fetchJsonSafe(uri);
         if (node == null || node.isMissingNode()) {
-            throw new ResourceNotFoundException("OpenAlex request failed for URL: " + url);
+            throw new ResourceNotFoundException("OpenAlex request failed for URL: " + uri);
         }
         return node;
     }
 
     /**
+     * Chuyển UriComponentsBuilder thành URI đã encode đúng 1 lần — tránh double-encoding
+     * khi truyền qua RestClient.uri(String), vốn tự encode lại chuỗi String đầu vào.
+     */
+    private URI toUri(UriComponentsBuilder builder) {
+        return builder.build().encode().toUri();
+    }
+
+    /**
      * Xử lý nghiệp vụ: fetchJsonSafe.
      */
-    private JsonNode fetchJsonSafe(String url) {
+    private JsonNode fetchJsonSafe(URI uri) {
         int attempts = Math.max(1, appProperties.getSync().getOpenAlexRetryAttempts());
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
-                JsonNode response = externalApiRestClient.get().uri(url != null ? url : "").retrieve().body(JsonNode.class);
+                JsonNode response = externalApiRestClient.get().uri(uri).retrieve().body(JsonNode.class);
                 // Giãn cách 150ms sau mỗi request thành công để tránh chạm hạn mức rate limit
                 // (10 req/s) của OpenAlex
                 sleepQuietly(150L);
@@ -391,7 +406,7 @@ public class OpenAlexClient {
                     }
                 }
                 if (attempt >= attempts) {
-                    log.warn("OpenAlex rate limit hit, exhausted all {} attempts for URL: {}", attempts, url, ex);
+                    log.warn("OpenAlex rate limit hit, exhausted all {} attempts for URL: {}", attempts, uri, ex);
                     return null;
                 }
                 log.warn("OpenAlex rate limit hit (429), retrying attempt {}/{} after sleeping {} ms...", attempt + 1,
@@ -399,10 +414,10 @@ public class OpenAlexClient {
                 sleepQuietly(sleepMs);
             } catch (Exception ex) {
                 if (attempt >= attempts) {
-                    log.warn("OpenAlex request failed after {} attempts: {}", attempts, url, ex);
+                    log.warn("OpenAlex request failed after {} attempts: {}", attempts, uri, ex);
                     return null;
                 }
-                log.debug("OpenAlex retry {}/{} for {}", attempt, attempts, url);
+                log.debug("OpenAlex retry {}/{} for {}", attempt, attempts, uri);
                 sleepQuietly(500L * attempt);
             }
         }
@@ -535,7 +550,7 @@ public class OpenAlexClient {
                     .queryParam("select", "id,title,publication_year,publication_date,doi,cited_by_count");
             appendMailto(builder);
             appendApiKey(builder);
-            JsonNode root = fetchJsonSafe(builder.toUriString());
+            JsonNode root = fetchJsonSafe(toUri(builder));
             if (root != null && root.has("results") && root.path("results").isArray()) {
                 for (JsonNode work : root.path("results")) {
                     String id = toOpenAlexWorkId(textOrNull(work.path("id")));
@@ -588,7 +603,7 @@ public class OpenAlexClient {
                 .queryParam("select", "id,title,publication_year,publication_date,doi,cited_by_count");
         appendMailto(builder);
         appendApiKey(builder);
-        JsonNode work = fetchJsonSafe(builder.toUriString());
+        JsonNode work = fetchJsonSafe(toUri(builder));
         if (work == null || work.isMissingNode() || work.isNull()) {
             return null;
         }
@@ -619,7 +634,7 @@ public class OpenAlexClient {
                 .queryParam("select", "id,referenced_works");
         appendMailto(builder);
         appendApiKey(builder);
-        JsonNode node = fetchJsonSafe(builder.toUriString());
+        JsonNode node = fetchJsonSafe(toUri(builder));
         if (node == null || node.isMissingNode()) {
             return List.of();
         }
@@ -675,7 +690,7 @@ public class OpenAlexClient {
         appendMailto(builder);
         appendApiKey(builder);
 
-        JsonNode root = fetchJsonSafe(builder.toUriString());
+        JsonNode root = fetchJsonSafe(toUri(builder));
         if (root == null || !root.has("results") || !root.path("results").isArray()) {
             return List.of();
         }

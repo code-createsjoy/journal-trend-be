@@ -17,7 +17,7 @@ public class AiTopTrendsAnalysisResponse {
     private List<String> analyzedKeywords;
     /** Các từ khóa tăng trưởng mạnh nhất trong nhóm */
     private List<String> topGrowingKeywords;
-    /** Phân tích chi tiết so sánh các đường xu hướng bằng tiếng Việt */
+    /** Phân tích chi tiết so sánh các đường xu hướng (nội dung bằng tiếng Anh) */
     private String analysis;
     /** Các điểm nhận xét cốt lõi (tối thiểu 3 ý) */
     private List<String> keyInsights;
