@@ -7,6 +7,7 @@ import com.norman.swp391.dto.request.auth.LoginRequest;
 import com.norman.swp391.dto.request.auth.RefreshTokenRequest;
 import com.norman.swp391.dto.request.auth.RegisterRequest;
 import com.norman.swp391.dto.request.auth.ResetPasswordRequest;
+import com.norman.swp391.dto.request.auth.UpdateNotificationPreferencesRequest;
 import com.norman.swp391.dto.request.auth.UpdateProfileRequest;
 import com.norman.swp391.dto.response.auth.AuthResponse;
 import com.norman.swp391.dto.response.auth.TokenResponse;
@@ -97,6 +98,15 @@ public class AuthController {
     @PutMapping("/profile")
     public ApiResponse<UserResponse> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
         return ApiResponse.ok(authService.updateProfile(request));
+    }
+
+    /**
+     * Cập nhật tuỳ chọn thông báo.
+     */
+    @PutMapping("/notification-preferences")
+    public ApiResponse<UserResponse> updateNotificationPreferences(
+            @Valid @RequestBody UpdateNotificationPreferencesRequest request) {
+        return ApiResponse.ok(authService.updateNotificationPreferences(request));
     }
 
     /**

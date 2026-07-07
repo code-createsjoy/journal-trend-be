@@ -97,6 +97,9 @@ public class NotificationServiceImpl implements NotificationService {
             List<FollowKeyword> followers = followKeywordRepository.findByKeywordId(keyword.getKeywordId());
             for (FollowKeyword follow : followers) {
                 User user = follow.getUser();
+                if (!user.isNotifyKeywords()) {
+                    continue;
+                }
                 if (notificationRepository.existsByUserIdAndKeywordIdAndTriggerType(
                         user.getId(), keyword.getKeywordId(), NotificationTriggerType.TRENDING_KEYWORD)) {
                     continue;
@@ -200,20 +203,23 @@ public class NotificationServiceImpl implements NotificationService {
                 if (fjs != null) {
                     for (FollowJournal fj : fjs) {
                         User user = fj.getUser();
-                        if (notifiedUsersForPaper.add(user.getId())) {
-                            String key = user.getId() + "-" + paperId;
-                            if (!existingNotifKeys.contains(key)) {
-                                notificationsToSave.add(Notification.builder()
-                                        .user(user)
-                                        .paper(paper)
-                                        .journal(paper.getJournalRef())
-                                        .message("New paper in journal you follow: " + truncate(paper.getTitle(), 120))
-                                        .triggerType(NotificationTriggerType.NEW_PAPER)
-                                        .readStatus(NotificationReadStatus.UNREAD)
-                                        .createdAt(LocalDateTime.now())
-                                        .build());
-                                userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
-                            }
+                        String key = user.getId() + "-" + paperId;
+                        if (existingNotifKeys.contains(key)) {
+                            continue;
+                        }
+                        // Email digest độc lập với công tắc in-app; dedup theo Set<Paper> mỗi user.
+                        userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
+                        // In-app: mỗi user tối đa 1 notification/paper, chỉ tạo khi bật notifyJournals.
+                        if (user.isNotifyJournals() && notifiedUsersForPaper.add(user.getId())) {
+                            notificationsToSave.add(Notification.builder()
+                                    .user(user)
+                                    .paper(paper)
+                                    .journal(paper.getJournalRef())
+                                    .message("New paper in journal you follow: " + truncate(paper.getTitle(), 120))
+                                    .triggerType(NotificationTriggerType.NEW_PAPER)
+                                    .readStatus(NotificationReadStatus.UNREAD)
+                                    .createdAt(LocalDateTime.now())
+                                    .build());
                         }
                     }
                 }
@@ -227,20 +233,21 @@ public class NotificationServiceImpl implements NotificationService {
                     if (fks != null) {
                         for (FollowKeyword fk : fks) {
                             User user = fk.getUser();
-                            if (notifiedUsersForPaper.add(user.getId())) {
-                                String key = user.getId() + "-" + paperId;
-                                if (!existingNotifKeys.contains(key)) {
-                                    notificationsToSave.add(Notification.builder()
-                                            .user(user)
-                                            .paper(paper)
-                                            .keyword(keyword)
-                                            .message("New paper with keyword \"" + keyword.getTerm() + "\": " + truncate(paper.getTitle(), 80))
-                                            .triggerType(NotificationTriggerType.NEW_PAPER)
-                                            .readStatus(NotificationReadStatus.UNREAD)
-                                            .createdAt(LocalDateTime.now())
-                                            .build());
-                                    userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
-                                }
+                            String key = user.getId() + "-" + paperId;
+                            if (existingNotifKeys.contains(key)) {
+                                continue;
+                            }
+                            userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
+                            if (user.isNotifyKeywords() && notifiedUsersForPaper.add(user.getId())) {
+                                notificationsToSave.add(Notification.builder()
+                                        .user(user)
+                                        .paper(paper)
+                                        .keyword(keyword)
+                                        .message("New paper with keyword \"" + keyword.getTerm() + "\": " + truncate(paper.getTitle(), 80))
+                                        .triggerType(NotificationTriggerType.NEW_PAPER)
+                                        .readStatus(NotificationReadStatus.UNREAD)
+                                        .createdAt(LocalDateTime.now())
+                                        .build());
                             }
                         }
                     }
@@ -255,20 +262,21 @@ public class NotificationServiceImpl implements NotificationService {
                     if (fas != null) {
                         for (FollowAuthor fa : fas) {
                             User user = fa.getUser();
-                            if (notifiedUsersForPaper.add(user.getId())) {
-                                String key = user.getId() + "-" + paperId;
-                                if (!existingNotifKeys.contains(key)) {
-                                    notificationsToSave.add(Notification.builder()
-                                            .user(user)
-                                            .paper(paper)
-                                            .author(author)
-                                            .message("New paper from author you follow: " + author.getName() + " - " + truncate(paper.getTitle(), 80))
-                                            .triggerType(NotificationTriggerType.NEW_PAPER)
-                                            .readStatus(NotificationReadStatus.UNREAD)
-                                            .createdAt(LocalDateTime.now())
-                                            .build());
-                                    userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
-                                }
+                            String key = user.getId() + "-" + paperId;
+                            if (existingNotifKeys.contains(key)) {
+                                continue;
+                            }
+                            userNewPapersMap.computeIfAbsent(user, k -> new LinkedHashSet<>()).add(paper);
+                            if (user.isNotifyAuthors() && notifiedUsersForPaper.add(user.getId())) {
+                                notificationsToSave.add(Notification.builder()
+                                        .user(user)
+                                        .paper(paper)
+                                        .author(author)
+                                        .message("New paper from author you follow: " + author.getName() + " - " + truncate(paper.getTitle(), 80))
+                                        .triggerType(NotificationTriggerType.NEW_PAPER)
+                                        .readStatus(NotificationReadStatus.UNREAD)
+                                        .createdAt(LocalDateTime.now())
+                                        .build());
                             }
                         }
                     }
@@ -283,7 +291,7 @@ public class NotificationServiceImpl implements NotificationService {
 
         // 7. Gửi mail bất đồng bộ (Async) cho từng user nhận được bài báo mới
         userNewPapersMap.forEach((user, papersList) -> {
-            if (user.getEmail() != null) {
+            if (user.getEmail() != null && user.isNotifyEmail()) {
                 emailService.sendNewPaperNotificationsEmail(
                         user.getEmail(),
                         user.getFullName(),

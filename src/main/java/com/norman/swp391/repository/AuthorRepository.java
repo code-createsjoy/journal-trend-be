@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -45,6 +46,18 @@ public interface AuthorRepository extends JpaRepository<Author, Long> {
      */
     @Query("SELECT a FROM Author a ORDER BY a.citationCount DESC")
     Page<Author> findFeatured(Pageable pageable);
+
+    /**
+     * Tác giả có citationCount cao nhất.
+     */
+    @Query("SELECT a FROM Author a ORDER BY a.citationCount DESC")
+    List<Author> findTopByCitationCount(Pageable pageable);
+
+    /**
+     * Tác giả có hIndex cao nhất (bỏ qua author chưa enrich hIndex).
+     */
+    @Query("SELECT a FROM Author a WHERE a.hIndex IS NOT NULL ORDER BY a.hIndex DESC")
+    List<Author> findTopByHIndex(Pageable pageable);
 
     /**
      * Tìm kiếm toàn bộ tác giả phân trang theo tên.

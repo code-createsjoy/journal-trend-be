@@ -34,9 +34,9 @@ public class AppProperties {
     private OpenAlex openalex = new OpenAlex();
 
     /**
-     * Thực hiện Gemini AI.
+     * Thực hiện Groq AI.
      */
-    private Gemini gemini = new Gemini();
+    private Groq groq = new Groq();
 
     /**
      * Thực hiện Sync.
@@ -72,12 +72,12 @@ public class AppProperties {
     @Getter
     @Setter
     /**
-     * Cấu hình Gemini AI.
+     * Cấu hình Groq AI (OpenAI-compatible chat completions).
      */
-    public static class Gemini {
+    public static class Groq {
         private String apiKey = "";
-        private String baseUrl = "https://generativelanguage.googleapis.com/v1beta";
-        private String model = "gemini-2.0-flash";
+        private String baseUrl = "https://api.groq.com/openai/v1";
+        private String model = "llama-3.3-70b-versatile";
         private int maxOutputTokens = 2048;
         private int readTimeoutMs = 60_000;
     }

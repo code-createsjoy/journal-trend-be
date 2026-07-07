@@ -24,8 +24,8 @@ public class AiAnalysisController {
     private final AiAnalysisService aiAnalysisService;
 
     /**
-     * Phân tích xu hướng keyword bằng Gemini AI.
-     * Yêu cầu đăng nhập. Gửi keywordId + months + ảnh biểu đồ base64 (tùy chọn).
+     * Phân tích xu hướng keyword bằng Groq AI.
+     * Yêu cầu đăng nhập. Gửi keywordId + months.
      */
     @PostMapping("/analyze-trend")
     public ApiResponse<AiTrendAnalysisResponse> analyzeTrend(@Valid @RequestBody AiTrendAnalysisRequest request) {
