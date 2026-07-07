@@ -29,6 +29,10 @@ public class UserMapper {
                 .status(user.getStatus())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .notifyKeywords(user.isNotifyKeywords())
+                .notifyAuthors(user.isNotifyAuthors())
+                .notifyJournals(user.isNotifyJournals())
+                .notifyEmail(user.isNotifyEmail())
                 .build();
     }
 

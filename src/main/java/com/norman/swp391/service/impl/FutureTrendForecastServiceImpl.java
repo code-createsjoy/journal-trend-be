@@ -49,7 +49,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     @Override
     @Transactional
     public void runForecastJob() {
-        log.info("[ForecastJob] Bắt đầu tính toán dự báo hot topic");
+        log.info("[ForecastJob] Starting hot topic forecast computation");
         LocalDateTime jobStart = LocalDateTime.now();
         AppProperties.Sync cfg = appProperties.getSync();
 
@@ -99,7 +99,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
         }
 
         if (validList.isEmpty()) {
-            log.warn("[ForecastJob] Không có keyword nào hợp lệ để dự báo");
+            log.warn("[ForecastJob] No valid keyword available for forecasting");
             return;
         }
 
@@ -147,7 +147,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
         forecastRepository.deleteByCalculatedAtBefore(jobStart);
         forecastRepository.saveAll(toSave);
 
-        log.info("[ForecastJob] Hoàn tất: {} keyword được dự báo", toSave.size());
+        log.info("[ForecastJob] Completed: {} keywords forecasted", toSave.size());
     }
 
     @Override
@@ -173,7 +173,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     @Transactional(readOnly = true)
     public ForecastDetailResponse getForecastDetail(Long keywordId) {
         FutureTrendForecast forecast = forecastRepository.findByKeywordId(keywordId)
-            .orElseThrow(() -> new ResourceNotFoundException("Không có dự báo cho keyword: " + keywordId));
+            .orElseThrow(() -> new ResourceNotFoundException("No forecast found for keyword: " + keywordId));
 
         // Lấy lịch sử 12 tháng gần nhất để vẽ phần nét liền (thứ tự thời gian tăng dần)
         List<ForecastMonthDto> historical = recentHistoryAscending(keywordId).stream()
@@ -317,7 +317,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
         try {
             return objectMapper.writeValueAsString(months);
         } catch (JsonProcessingException e) {
-            log.warn("[ForecastJob] Không serialize được forecastMonths: {}", e.getMessage());
+            log.warn("[ForecastJob] Failed to serialize forecastMonths: {}", e.getMessage());
             return "[]";
         }
     }
@@ -327,7 +327,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
             return objectMapper.readValue(json,
                 objectMapper.getTypeFactory().constructCollectionType(List.class, ForecastMonthDto.class));
         } catch (JsonProcessingException e) {
-            log.warn("[Forecast] Không parse được forecastMonthsJson: {}", e.getMessage());
+            log.warn("[Forecast] Failed to parse forecastMonthsJson: {}", e.getMessage());
             return List.of();
         }
     }

@@ -53,5 +53,21 @@ public class User extends BaseAuditEntity {
     @Column(name = "verified", nullable = false, columnDefinition = "bit default 0")
     @Builder.Default
     private boolean verified = false;
+
+    @Column(name = "notify_keywords", nullable = false, columnDefinition = "bit default 1")
+    @Builder.Default
+    private boolean notifyKeywords = true;
+
+    @Column(name = "notify_authors", nullable = false, columnDefinition = "bit default 1")
+    @Builder.Default
+    private boolean notifyAuthors = true;
+
+    @Column(name = "notify_journals", nullable = false, columnDefinition = "bit default 1")
+    @Builder.Default
+    private boolean notifyJournals = true;
+
+    @Column(name = "notify_email", nullable = false, columnDefinition = "bit default 1")
+    @Builder.Default
+    private boolean notifyEmail = true;
 }
 

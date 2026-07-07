@@ -15,7 +15,14 @@ public final class HelixDtos {
     /**
      * User Helix.
      */
-    public record HelixUser(String name, String email, String role) {}
+    public record HelixUser(
+            String name,
+            String email,
+            String role,
+            boolean notifyKeywords,
+            boolean notifyAuthors,
+            boolean notifyJournals,
+            boolean notifyEmail) {}
 
     /**
      * Session Helix.
@@ -36,6 +43,15 @@ public final class HelixDtos {
      * Update profile Helix.
      */
     public record HelixUpdateProfileRequest(String name) {}
+
+    /**
+     * Update notification preferences Helix.
+     */
+    public record HelixUpdateNotificationPreferencesRequest(
+            boolean notifyKeywords,
+            boolean notifyAuthors,
+            boolean notifyJournals,
+            boolean notifyEmail) {}
 
     /**
      * Ref tác giả.

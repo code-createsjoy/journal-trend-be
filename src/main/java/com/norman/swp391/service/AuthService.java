@@ -6,6 +6,7 @@ import com.norman.swp391.dto.request.auth.LoginRequest;
 import com.norman.swp391.dto.request.auth.RefreshTokenRequest;
 import com.norman.swp391.dto.request.auth.RegisterRequest;
 import com.norman.swp391.dto.request.auth.ResetPasswordRequest;
+import com.norman.swp391.dto.request.auth.UpdateNotificationPreferencesRequest;
 import com.norman.swp391.dto.request.auth.UpdateProfileRequest;
 import com.norman.swp391.dto.response.auth.AuthResponse;
 import com.norman.swp391.dto.response.auth.TokenResponse;
@@ -55,6 +56,11 @@ public interface AuthService {
  * Cập nhật thông tin hồ sơ người dùng.
  */
     UserResponse updateProfile(UpdateProfileRequest request);
+
+/**
+ * Cập nhật tuỳ chọn thông báo của người dùng.
+ */
+    UserResponse updateNotificationPreferences(UpdateNotificationPreferencesRequest request);
 
 /**
  * Lấy thông tin user đang đăng nhập.
