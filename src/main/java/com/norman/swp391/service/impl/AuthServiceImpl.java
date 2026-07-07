@@ -7,6 +7,7 @@ import com.norman.swp391.dto.request.auth.LoginRequest;
 import com.norman.swp391.dto.request.auth.RefreshTokenRequest;
 import com.norman.swp391.dto.request.auth.RegisterRequest;
 import com.norman.swp391.dto.request.auth.ResetPasswordRequest;
+import com.norman.swp391.dto.request.auth.UpdateNotificationPreferencesRequest;
 import com.norman.swp391.dto.request.auth.UpdateProfileRequest;
 import com.norman.swp391.dto.response.auth.AuthResponse;
 import com.norman.swp391.dto.response.auth.TokenResponse;
@@ -230,6 +231,25 @@ public class AuthServiceImpl implements AuthService {
         if (StringUtils.hasText(request.getFullName())) {
             user.setFullName(request.getFullName().trim());
         }
+        user = userRepository.save(user);
+        return UserMapper.toResponse(user);
+    }
+
+    @Override
+    @Transactional
+/**
+ * Cập nhật tuỳ chọn thông báo của người dùng.
+ */
+    public UserResponse updateNotificationPreferences(UpdateNotificationPreferencesRequest request) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new BadRequestException("Not authenticated");
+        }
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        user.setNotifyKeywords(request.isNotifyKeywords());
+        user.setNotifyAuthors(request.isNotifyAuthors());
+        user.setNotifyJournals(request.isNotifyJournals());
+        user.setNotifyEmail(request.isNotifyEmail());
         user = userRepository.save(user);
         return UserMapper.toResponse(user);
     }

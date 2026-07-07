@@ -22,6 +22,10 @@ public class UserResponse {
     private UserStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private boolean notifyKeywords;
+    private boolean notifyAuthors;
+    private boolean notifyJournals;
+    private boolean notifyEmail;
 }
 
 

@@ -3,8 +3,10 @@ package com.norman.swp391.controller.helix;
 import com.norman.swp391.dto.helix.HelixDtos.HelixAuthSession;
 import com.norman.swp391.dto.helix.HelixDtos.HelixLoginRequest;
 import com.norman.swp391.dto.helix.HelixDtos.HelixRegisterRequest;
+import com.norman.swp391.dto.helix.HelixDtos.HelixUpdateNotificationPreferencesRequest;
 import com.norman.swp391.dto.helix.HelixDtos.HelixUpdateProfileRequest;
 import com.norman.swp391.dto.request.auth.ForgotPasswordRequest;
+import com.norman.swp391.dto.request.auth.UpdateNotificationPreferencesRequest;
 import com.norman.swp391.dto.request.auth.ResetPasswordRequest;
 import com.norman.swp391.dto.request.auth.RefreshTokenRequest;
 import com.norman.swp391.dto.request.auth.UpdateProfileRequest;
@@ -84,5 +86,20 @@ public class HelixAuthController {
         String bearer = httpRequest.getHeader(HttpHeaders.AUTHORIZATION);
         String token = bearer != null && bearer.startsWith("Bearer ") ? bearer.substring(7) : "";
         return new HelixAuthSession(helixApiService.currentUser(), token, null);
+    }
+
+    @PutMapping("/notification-preferences")
+    public HelixAuthSession updateNotificationPreferences(
+            @Valid @RequestBody HelixUpdateNotificationPreferencesRequest request, HttpServletRequest httpRequest) {
+        var user = helixApiService.updateNotificationPreferences(
+                UpdateNotificationPreferencesRequest.builder()
+                        .notifyKeywords(request.notifyKeywords())
+                        .notifyAuthors(request.notifyAuthors())
+                        .notifyJournals(request.notifyJournals())
+                        .notifyEmail(request.notifyEmail())
+                        .build());
+        String bearer = httpRequest.getHeader(HttpHeaders.AUTHORIZATION);
+        String token = bearer != null && bearer.startsWith("Bearer ") ? bearer.substring(7) : "";
+        return new HelixAuthSession(user, token, null);
     }
 }

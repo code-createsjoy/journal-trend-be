@@ -3,6 +3,7 @@ package com.norman.swp391.service.helix;
 import com.norman.swp391.dto.helix.HelixDtos.*;
 import com.norman.swp391.dto.request.auth.LoginRequest;
 import com.norman.swp391.dto.request.auth.RegisterRequest;
+import com.norman.swp391.dto.request.auth.UpdateNotificationPreferencesRequest;
 import com.norman.swp391.dto.request.collection.AddPaperToCollectionRequest;
 import com.norman.swp391.dto.request.collection.CollectionRequest;
 import com.norman.swp391.dto.response.admin.SyncLogResponse;
@@ -85,6 +86,10 @@ public class HelixApiService {
 
     public HelixUser currentUser() {
         return toHelixUser(authService.getCurrentUser());
+    }
+
+    public HelixUser updateNotificationPreferences(UpdateNotificationPreferencesRequest request) {
+        return toHelixUser(authService.updateNotificationPreferences(request));
     }
 
     public List<HelixPaper> listPapers(String category, String excludeId, Integer limit, String q, Long keywordId) {
@@ -565,7 +570,14 @@ public class HelixApiService {
 
     private HelixUser toHelixUser(UserResponse user) {
         String role = user.getRole() == UserRole.SUPER_ADMIN ? "SUPER_ADMIN" : user.getRole().name();
-        return new HelixUser(user.getFullName(), user.getEmail(), role);
+        return new HelixUser(
+                user.getFullName(),
+                user.getEmail(),
+                role,
+                user.isNotifyKeywords(),
+                user.isNotifyAuthors(),
+                user.isNotifyJournals(),
+                user.isNotifyEmail());
     }
 
     private Map<Long, List<HelixAuthorRef>> loadAuthorRefsByPaper(List<Long> paperIds) {
