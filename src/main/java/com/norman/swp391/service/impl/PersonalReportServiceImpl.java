@@ -100,24 +100,6 @@ public class PersonalReportServiceImpl implements PersonalReportService {
     }
 
     private TrendsSection buildTrendsSection(List<Long> keywordIds, Set<String> domains) {
-        // Giới hạn top 10 keyword có nhiều paper nhất trong danh sách follow
-        List<Long> top10KeywordIds = keywordIds;
-        if (keywordIds.size() > 5) {
-            List<Object[]> topRows = paperKeywordRepository.findTopKeywordsByPaperCount(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE,
-                    org.springframework.data.domain.PageRequest.of(0, 5));
-            Set<Long> topIdSet = topRows.stream()
-                    .map(r -> (Long) r[0])
-                    .filter(keywordIds::contains)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
-            // Bổ sung từ keywordIds gốc nếu chưa đủ 5
-            for (Long id : keywordIds) {
-                if (topIdSet.size() >= 5) break;
-                topIdSet.add(id);
-            }
-            top10KeywordIds = new ArrayList<>(topIdSet);
-        }
-
         // Tính 3 tháng đã hoàn thành + tháng hiện tại đang cập nhật
         YearMonth lastCompleted = YearMonth.now().minusMonths(1);
         List<Integer> yearMonths = new ArrayList<>();
@@ -128,10 +110,10 @@ public class PersonalReportServiceImpl implements PersonalReportService {
         YearMonth current = YearMonth.now();
         yearMonths.add(current.getYear() * 100 + current.getMonthValue());
 
-        // Line Chart: Xu hướng từ khóa theo tháng (3 tháng gần nhất, dữ liệu thật từ DB)
+        // Line Chart: Toàn bộ keyword user đang follow (tối đa 20), frontend tự chọn hiển thị
         List<KeywordTrendPoint> lineChart = new ArrayList<>();
         List<Object[]> monthlyRows = paperKeywordRepository.countMonthlyPapersByKeywordIds(
-                top10KeywordIds, yearMonths);
+                keywordIds, yearMonths);
         for (Object[] row : monthlyRows) {
             lineChart.add(KeywordTrendPoint.builder()
                     .term((String) row[0])
