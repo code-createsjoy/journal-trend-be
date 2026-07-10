@@ -152,7 +152,7 @@ public class HelixApiService {
                 affiliation,
                 Math.max(paperCount, 1),
                 citations,
-                estimateHIndex(citations),
+                author.getHIndex() != null ? author.getHIndex() : estimateHIndex(citations),
                 author.getSourceIdentifier(),
                 author.getSourceType() != null ? author.getSourceType() : "Local DB");
     }
@@ -167,13 +167,35 @@ public class HelixApiService {
                         a.getAffiliation() != null ? a.getAffiliation() : "",
                         (int) paperAuthorRepository.countByAuthorId(a.getId()),
                         a.getCitationCount(),
-                        estimateHIndex(a.getCitationCount())))
+                        a.getHIndex() != null ? a.getHIndex() : estimateHIndex(a.getCitationCount())))
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<HelixAuthor> listAuthors(int page, int size, String q, String topicId) {
+    public PageResponse<HelixAuthor> listAuthors(int page, int size, String q, String topicId, String sortBy) {
         int pageSize = Math.max(1, Math.min(size, 100));
+
+        // "papers" cần JOIN + GROUP BY (không phải cột trực tiếp trên Author) — xử lý riêng,
+        // chỉ áp dụng khi không lọc theo topicId (giữ nguyên hành vi domain-trending cũ).
+        if ("papers".equalsIgnoreCase(sortBy) && (topicId == null || topicId.isBlank())) {
+            Pageable pageable = PageRequest.of(page, pageSize);
+            Page<Object[]> rows = paperAuthorRepository.findAuthorsByPaperCountDesc(q, pageable);
+            List<HelixAuthor> helixAuthors = rows.getContent().stream()
+                    .map(row -> {
+                        Author a = (Author) row[0];
+                        long paperCount = (Long) row[1];
+                        return new HelixAuthor(
+                                String.valueOf(a.getId()),
+                                a.getName(),
+                                a.getAffiliation() != null ? a.getAffiliation() : "",
+                                (int) paperCount,
+                                a.getCitationCount(),
+                                a.getHIndex() != null ? a.getHIndex() : estimateHIndex(a.getCitationCount()));
+                    })
+                    .toList();
+            return PageResponse.from(rows, helixAuthors);
+        }
+
         Pageable pageable = PageRequest.of(page, pageSize);
         Page<Author> authorPage;
 
@@ -199,7 +221,10 @@ public class HelixApiService {
                 authorPage = authorRepository.findAllAuthors(q, pageable);
             }
         } else {
-            pageable = PageRequest.of(page, pageSize, Sort.by("citationCount").descending());
+            Sort sort = "hIndex".equalsIgnoreCase(sortBy)
+                    ? Sort.by(Sort.Direction.DESC, "hIndex")
+                    : Sort.by(Sort.Direction.DESC, "citationCount");
+            pageable = PageRequest.of(page, pageSize, sort);
             authorPage = authorRepository.findAllAuthors(q, pageable);
         }
 
@@ -210,7 +235,7 @@ public class HelixApiService {
                         a.getAffiliation() != null ? a.getAffiliation() : "",
                         (int) paperAuthorRepository.countByAuthorId(a.getId()),
                         a.getCitationCount(),
-                        estimateHIndex(a.getCitationCount())))
+                        a.getHIndex() != null ? a.getHIndex() : estimateHIndex(a.getCitationCount())))
                 .toList();
 
         return PageResponse.from(authorPage, helixAuthors);
@@ -366,7 +391,7 @@ public class HelixApiService {
                         a.getAffiliation() != null ? a.getAffiliation() : "",
                         (int) paperAuthorRepository.countByAuthorId(a.getId()),
                         a.getCitationCount(),
-                        estimateHIndex(a.getCitationCount())))
+                        a.getHIndex() != null ? a.getHIndex() : estimateHIndex(a.getCitationCount())))
                 .toList();
 
         List<HelixTopicTrend> helixTopics = topicTrends.stream()
