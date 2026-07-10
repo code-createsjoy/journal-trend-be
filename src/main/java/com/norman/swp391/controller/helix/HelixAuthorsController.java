@@ -30,8 +30,9 @@ public class HelixAuthorsController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "24") int size,
             @RequestParam(required = false) String q,
-            @RequestParam(required = false) String topicId) {
-        return helixApiService.listAuthors(page, size, q, topicId);
+            @RequestParam(required = false) String topicId,
+            @RequestParam(required = false) String sort) {
+        return helixApiService.listAuthors(page, size, q, topicId, sort);
     }
 
 

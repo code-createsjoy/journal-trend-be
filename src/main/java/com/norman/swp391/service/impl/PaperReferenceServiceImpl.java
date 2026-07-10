@@ -57,6 +57,11 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
     private final OpenAlexClient openAlexClient;
     private final PlatformTransactionManager transactionManager;
 
+    // Khóa theo paperId — tránh nhiều request đồng thời cùng fetch/ghi lại citation cache
+    // cho cùng 1 paper (gây duplicate-key khi race, và lãng phí quota OpenAlex).
+    private final java.util.concurrent.ConcurrentHashMap<Long, Object> citationRefreshLocks =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     private TransactionTemplate getRequiresNewTemplate() {
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -292,16 +297,25 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
             return List.of();
         }
 
-        // 1. Check cache freshness (1-day TTL)
-        LocalDateTime oneDayAgo = LocalDateTime.now().minusDays(1);
-        boolean cacheIsFresh = paperCitationRepository.existsByPaperIdAndFetchedAtAfter(paperId, oneDayAgo);
+        // 1. Check cache freshness (7-day TTL — citation graph thay đổi chậm, giảm tải OpenAlex quota)
+        LocalDateTime cacheThreshold = LocalDateTime.now().minusDays(7);
+        boolean cacheIsFresh = paperCitationRepository.existsByPaperIdAndFetchedAtAfter(paperId, cacheThreshold);
 
         List<PaperCitation> cachedCitations;
         if (cacheIsFresh) {
             cachedCitations = paperCitationRepository.findByPaperId(paperId);
         } else {
-            // Fetch từ OpenAlex (luôn sort by cited_by_count để cache chất lượng nhất)
-            cachedCitations = fetchAndSaveCitations(paper);
+            // Khóa theo paperId — chỉ 1 request thực sự gọi OpenAlex + ghi DB, các request
+            // đồng thời khác chờ rồi đọc lại cache vừa được refresh (tránh gọi trùng + duplicate-key).
+            Object lock = citationRefreshLocks.computeIfAbsent(paperId, k -> new Object());
+            synchronized (lock) {
+                if (paperCitationRepository.existsByPaperIdAndFetchedAtAfter(paperId, cacheThreshold)) {
+                    cachedCitations = paperCitationRepository.findByPaperId(paperId);
+                } else {
+                    // Fetch từ OpenAlex (luôn sort by cited_by_count để cache chất lượng nhất)
+                    cachedCitations = fetchAndSaveCitations(paper);
+                }
+            }
         }
 
         if (cachedCitations.isEmpty()) {

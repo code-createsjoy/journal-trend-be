@@ -70,4 +70,27 @@ public interface PaperAuthorRepository extends JpaRepository<PaperAuthor, Long> 
         ORDER BY COUNT(DISTINCT p) DESC
         """)
     List<Object[]> findAuthorsOrderByPaperCountDesc(org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Danh sách tác giả phân trang, sắp xếp theo số paper (ACTIVE) giảm dần — dùng cho
+     * "sort by papers" ở trang danh sách tác giả. Chỉ trả về tác giả có ít nhất 1 paper ACTIVE.
+     */
+    @Query(value = """
+        SELECT pa.author, COUNT(DISTINCT p)
+        FROM PaperAuthor pa
+        JOIN pa.paper p
+        WHERE p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+          AND (:q IS NULL OR :q = '' OR LOWER(pa.author.name) LIKE LOWER(CONCAT('%', :q, '%')))
+        GROUP BY pa.author, pa.author.id, pa.author.name, pa.author.affiliation, pa.author.citationCount, pa.author.hIndex, pa.author.sourceType, pa.author.sourceIdentifier
+        ORDER BY COUNT(DISTINCT p) DESC
+        """,
+        countQuery = """
+        SELECT COUNT(DISTINCT pa.author)
+        FROM PaperAuthor pa
+        JOIN pa.paper p
+        WHERE p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+          AND (:q IS NULL OR :q = '' OR LOWER(pa.author.name) LIKE LOWER(CONCAT('%', :q, '%')))
+        """)
+    org.springframework.data.domain.Page<Object[]> findAuthorsByPaperCountDesc(
+            @Param("q") String q, org.springframework.data.domain.Pageable pageable);
 }
