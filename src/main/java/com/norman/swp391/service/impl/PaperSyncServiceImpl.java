@@ -91,6 +91,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
     private volatile boolean shutdownRequested = false;
     private volatile Thread syncThread = null;
 
+    /**
+     * Khi app tắt (graceful shutdown), báo cho sync thread đang chạy dừng lại giữa
+     * chừng an toàn.
+     */
     @PreDestroy
     public void onShutdown() {
         shutdownRequested = true;
@@ -130,6 +134,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return response;
     }
 
+    /**
+     * Admin thủ công đánh dấu FAILED cho các sync đang RUNNING (dùng khi sync bị
+     * treo bất thường).
+     */
     @Override
     @Transactional
     public void resetStaleRunningSyncs() {
@@ -142,6 +150,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         }
     }
 
+    /** Lấy trạng thái của lần sync gần nhất (để FE hiển thị progress/kết quả). */
     @Override
     @Transactional
     public SyncLogResponse getLatestSyncStatus() {
@@ -153,6 +162,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return SyncLogMapper.toResponse(recent.get(0));
     }
 
+    /**
+     * Tự động đánh dấu FAILED cho sync RUNNING đã quá lâu (staleSyncMinutes) — coi
+     * như bị treo/crash.
+     */
     private void expireStaleRunningSyncs() {
         int staleMinutes = Math.max(1, appProperties.getSync().getStaleSyncMinutes());
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(staleMinutes);
@@ -166,6 +179,13 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         }
     }
 
+    /**
+     * Toàn bộ logic 1 lần sync, chạy trên virtual thread riêng (gọi từ startSync):
+     * crawl paper theo từng keyword từ OpenAlex → flushIngest lưu xuống DB theo
+     * batch →
+     * chạy các post-sync task (enrich author, tính trend, gửi notification...) →
+     * cập nhật SyncLog.
+     */
     private void executeSync(Long syncLogId) {
         SyncLog sync = syncLogRepository.findById(syncLogId).orElse(null);
         if (sync == null) {
@@ -213,7 +233,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 enabledSources.add("OpenAlex");
             }
 
-            // [Fix #8] DOI Pre-Filter — load known identifiers ONCE at sync start, normalize to lowercase for consistent matching
+            // [Fix #8] DOI Pre-Filter — load known identifiers ONCE at sync start,
+            // normalize to lowercase for consistent matching
             Set<String> knownDois = paperRepository.findAllDois().stream()
                     .filter(StringUtils::hasText)
                     .map(d -> d.toLowerCase().trim())
@@ -229,8 +250,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             boolean earlyStoppingEnabled = appProperties.getSync().isEarlyStoppingEnabled();
             int earlyStopThreshold = Math.max(1, appProperties.getSync().getEarlyStopConsecutiveEmptyPages());
 
-            outer:
-            for (String query : queries) {
+            outer: for (String query : queries) {
                 if (!StringUtils.hasText(query)) {
                     continue;
                 }
@@ -279,11 +299,12 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
                         // [Fix #6] Dùng totalPapersInserted thay vì totalFetched
                         if (totalPapersInserted >= maxPapers) {
-                            log.info("[SYNC] Keyword={} reached max-papers-per-run limit ({}). Will resume from page {} next run.",
+                            log.info(
+                                    "[SYNC] Keyword={} reached max-papers-per-run limit ({}). Will resume from page {} next run.",
                                     trimmedQuery, maxPapers, page);
                             break outer;
                         }
-                        
+
                         totalApiCalls++;
                         totalPagesFetched++;
                         queryApiCalls++;
@@ -301,7 +322,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                                     trimmedQuery, page);
                             throw ex;
                         } catch (Exception ex) {
-                            log.warn("[SYNC] Keyword={} {} fetch failed page {}: {}", trimmedQuery, source, page, ex.getMessage());
+                            log.warn("[SYNC] Keyword={} {} fetch failed page {}: {}", trimmedQuery, source, page,
+                                    ex.getMessage());
                             continue;
                         }
 
@@ -352,7 +374,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                             newInPage++;
                             ingestBuffer.add(metadata);
                             if (ingestBuffer.size() >= ingestBatchSize) {
-                                int inserted = flushIngest(ingestBuffer, newPaperIds, newAuthorsThisRun, maxPapers - totalPapersInserted,
+                                int inserted = flushIngest(ingestBuffer, newPaperIds, newAuthorsThisRun,
+                                        maxPapers - totalPapersInserted,
                                         knownDois, knownSourceIds);
                                 totalPapersInserted += inserted;
                                 ingestBuffer.clear();
@@ -366,7 +389,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                             consecutiveEmptyPages++;
                             if (earlyStoppingEnabled && consecutiveEmptyPages >= earlyStopThreshold) {
                                 globalEarlyStopTriggered = true;
-                                log.info("[SYNC] Keyword={} Source={} EARLY STOP — {} consecutive pages with 0 new papers at page {}. Will retry next sync.",
+                                log.info(
+                                        "[SYNC] Keyword={} Source={} EARLY STOP — {} consecutive pages with 0 new papers at page {}. Will retry next sync.",
                                         trimmedQuery, sourceTypeKey, consecutiveEmptyPages, page);
                                 break; // Chỉ break page loop, KHÔNG mark COMPLETED
                             }
@@ -382,7 +406,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                         crawlerState.setLastSyncTime(LocalDateTime.now());
                         keywordSyncStateRepository.save(crawlerState);
 
-                        log.info("[SYNC] Keyword={} Page={} PapersFetched={} NewInPage={} PapersInserted={} PapersSkipped={} LastPublicationDate={}",
+                        log.info(
+                                "[SYNC] Keyword={} Page={} PapersFetched={} NewInPage={} PapersInserted={} PapersSkipped={} LastPublicationDate={}",
                                 trimmedQuery, page, batch.size(), newInPage,
                                 totalPapersInserted - queryPapersInsertedBefore,
                                 queryPapersFetched - (totalPapersInserted - queryPapersInsertedBefore),
@@ -392,14 +417,16 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                     // Log Query-specific Effectiveness Metrics
                     int queryPapersInserted = totalPapersInserted - queryPapersInsertedBefore;
                     int queryPapersSkipped = queryPapersFetched - queryPapersInserted;
-                    log.info("[SYNC] Keyword={} Source={} Summary: PagesFetched={} ApiCalls={} PapersFetched={} PapersInserted={} PapersSkipped={}",
+                    log.info(
+                            "[SYNC] Keyword={} Source={} Summary: PagesFetched={} ApiCalls={} PapersFetched={} PapersInserted={} PapersSkipped={}",
                             trimmedQuery, sourceTypeKey, queryPagesFetched, queryApiCalls,
                             queryPapersFetched, queryPapersInserted, queryPapersSkipped);
                 }
             }
 
             if (!ingestBuffer.isEmpty()) {
-                int inserted = flushIngest(ingestBuffer, newPaperIds, newAuthorsThisRun, maxPapers - totalPapersInserted,
+                int inserted = flushIngest(ingestBuffer, newPaperIds, newAuthorsThisRun,
+                        maxPapers - totalPapersInserted,
                         knownDois, knownSourceIds);
                 totalPapersInserted += inserted;
             }
@@ -416,10 +443,11 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 }
             });
             runPostSyncTask("notifyTrending",
-                    () -> notificationService.notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords(null, null)));
+                    () -> notificationService
+                            .notifyTrendingForFollowedKeywords(keywordTrendService.findTrendingKeywords(null, null)));
             runPostSyncTask("notifyNewPapers",
                     () -> notificationService.notifyNewPapersForSubscriptions(newPaperIds));
-            // Enrich TOÀN BỘ author mới tạo trong chính lần sync này (không cap ở 50)
+            // Enrich TOÀN BỘ author mới tạo trong chính lần sync này
             runPostSyncTask("enrichNewAuthorStats", () -> enrichNewAuthors(newAuthorsThisRun));
             // Dọn dần backlog author cũ (nếu có) chưa từng được enrich
             runPostSyncTask("enrichAuthorStats", () -> enrichAuthorStats(50));
@@ -427,7 +455,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                     () -> journalService.calculateAndUpdateJournalImpactFactors());
             runPostSyncTask("evictDashboardCache", () -> {
                 var cache = cacheManager.getCache("dashboardSummary");
-                if (cache != null) cache.clear();
+                if (cache != null)
+                    cache.clear();
             });
 
             // [Fix #2] Check if shutdown was requested during sync — mark appropriately
@@ -478,8 +507,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
     /**
      * Enrich TOÀN BỘ author mới tạo trong chính lần sync này (không cap số lượng) —
-     * dùng thẳng list entity đã có sẵn trong bộ nhớ, KHÔNG query lại DB bằng IN-clause
-     * (tránh vượt giới hạn 2100 tham số của SQL Server khi có hàng nghìn author mới).
+     * dùng thẳng list entity đã có sẵn trong bộ nhớ, KHÔNG query lại DB bằng
+     * IN-clause
+     * (tránh vượt giới hạn 2100 tham số của SQL Server khi có hàng nghìn author
+     * mới).
      */
     private int enrichNewAuthors(List<Author> newAuthors) {
         if (newAuthors == null || newAuthors.isEmpty()) {
@@ -493,6 +524,12 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return enrichAuthors(toEnrich);
     }
 
+    /**
+     * Logic dùng chung: gọi OpenAlex lấy citationCount + hIndex thật cho danh sách
+     * author,
+     * rồi lưu xuống DB. Dùng chung cho cả enrichAuthorStats (backlog cũ) và
+     * enrichNewAuthors (mới sync).
+     */
     private int enrichAuthors(List<Author> toEnrich) {
         if (toEnrich.isEmpty()) {
             return 0;
@@ -503,7 +540,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 .filter(StringUtils::hasText)
                 .distinct()
                 .collect(Collectors.toList());
-        if (ids.isEmpty()) return 0;
+        if (ids.isEmpty())
+            return 0;
         try {
             Map<String, ExternalAuthorProfile> profileMap = openAlexClient.fetchAuthorsByIds(ids).stream()
                     .filter(p -> StringUtils.hasText(p.openAlexId()))
@@ -513,11 +551,14 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                             (a, b) -> a));
             List<Author> toSave = new ArrayList<>();
             for (Author author : toEnrich) {
-                if (!StringUtils.hasText(author.getSourceIdentifier())) continue;
+                if (!StringUtils.hasText(author.getSourceIdentifier()))
+                    continue;
                 ExternalAuthorProfile profile = profileMap.get(author.getSourceIdentifier().toLowerCase().trim());
                 if (profile != null) {
-                    if (profile.citedByCount() != null) author.setCitationCount(profile.citedByCount());
-                    if (profile.hIndex() != null) author.setHIndex(profile.hIndex());
+                    if (profile.citedByCount() != null)
+                        author.setCitationCount(profile.citedByCount());
+                    if (profile.hIndex() != null)
+                        author.setHIndex(profile.hIndex());
                     toSave.add(author);
                 }
             }
@@ -547,19 +588,21 @@ public class PaperSyncServiceImpl implements PaperSyncService {
      * Flush ingest buffer vào DB. Cập nhật knownDois/knownSourceIds sau khi insert.
      */
     private int flushIngest(List<ExternalPaperMetadata> batch, Set<Long> newPaperIds, List<Author> newAuthorsThisRun,
-                            int maxRemaining, Set<String> knownDois, Set<String> knownSourceIds) {
+            int maxRemaining, Set<String> knownDois, Set<String> knownSourceIds) {
         if (batch.isEmpty() || maxRemaining <= 0) {
             return 0;
         }
         List<ExternalPaperMetadata> slice = batch.size() > maxRemaining ? batch.subList(0, maxRemaining) : batch;
 
-        // Pre-fetch author stats BEFORE opening the DB transaction to avoid holding connection during HTTP calls
+        // Pre-fetch author stats BEFORE opening the DB transaction to avoid holding
+        // connection during HTTP calls
         // Keep original case for API calls; deduplicate by lowercase key
         Map<String, String> candidateAuthorIds = new HashMap<>(); // lowercase -> original
         for (ExternalPaperMetadata metadata : slice) {
             if (metadata.authorDetails() != null) {
                 for (ExternalAuthorInfo info : metadata.authorDetails()) {
-                    if ("OPENALEX".equalsIgnoreCase(info.sourceType()) && StringUtils.hasText(info.sourceIdentifier())) {
+                    if ("OPENALEX".equalsIgnoreCase(info.sourceType())
+                            && StringUtils.hasText(info.sourceIdentifier())) {
                         String orig = info.sourceIdentifier().trim();
                         candidateAuthorIds.putIfAbsent(orig.toLowerCase(), orig);
                     }
@@ -593,12 +636,13 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
         Integer saved = transactionTemplate.execute(status -> {
             // 1. Bulk fetch existing papers
-            List<String> dois = validMetas.stream().map(ExternalPaperMetadata::doi).filter(StringUtils::hasText).toList();
-            List<String> ids = validMetas.stream().map(ExternalPaperMetadata::sourceIdentifier).filter(StringUtils::hasText).toList();
+            List<String> dois = validMetas.stream().map(ExternalPaperMetadata::doi).filter(StringUtils::hasText)
+                    .toList();
+            List<String> ids = validMetas.stream().map(ExternalPaperMetadata::sourceIdentifier)
+                    .filter(StringUtils::hasText).toList();
             List<Paper> existingPapersList = paperRepository.findByDoiInOrSourceIdentifierIn(
                     dois.isEmpty() ? List.of("") : dois,
-                    ids.isEmpty() ? List.of("") : ids
-            );
+                    ids.isEmpty() ? List.of("") : ids);
 
             Map<String, Paper> paperByDoi = new HashMap<>();
             Map<String, Paper> paperBySource = new HashMap<>();
@@ -618,7 +662,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             Set<String> allowedDomainsLower = new HashSet<>();
             if (allowedDomainsCfg != null) {
                 for (String d : allowedDomainsCfg) {
-                    if (StringUtils.hasText(d)) allowedDomainsLower.add(d.trim().toLowerCase());
+                    if (StringUtils.hasText(d))
+                        allowedDomainsLower.add(d.trim().toLowerCase());
                 }
             }
 
@@ -634,18 +679,19 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             for (ExternalPaperMetadata metadata : validMetas) {
                 if (metadata.keywords() != null) {
                     for (ExternalKeywordInfo kw : metadata.keywords()) {
-                        if (!StringUtils.hasText(kw.term())) continue;
+                        if (!StringUtils.hasText(kw.term()))
+                            continue;
                         if (!allowedDomainsLower.isEmpty()) {
                             String d = StringUtils.hasText(kw.domain()) ? kw.domain().trim().toLowerCase() : "general";
-                            if (!allowedDomainsLower.contains(d)) continue;
+                            if (!allowedDomainsLower.contains(d))
+                                continue;
                         }
                         allKeywordTerms.add(kw.term().trim().toLowerCase());
                     }
                 }
             }
             List<Keyword> existingKeywordsList = keywordRepository.findByTermInIgnoreCase(
-                    allKeywordTerms.isEmpty() ? List.of("") : allKeywordTerms
-            );
+                    allKeywordTerms.isEmpty() ? List.of("") : allKeywordTerms);
             Map<String, Keyword> keywordMap = new HashMap<>();
             for (Keyword k : existingKeywordsList) {
                 keywordMap.put(k.getTerm().toLowerCase().trim(), k);
@@ -654,12 +700,15 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             // Save new keywords or update existing ones in batch
             List<Keyword> keywordsToSave = new ArrayList<>();
             for (ExternalPaperMetadata metadata : validMetas) {
-                if (metadata.keywords() == null) continue;
+                if (metadata.keywords() == null)
+                    continue;
                 for (ExternalKeywordInfo info : metadata.keywords()) {
-                    if (!StringUtils.hasText(info.term())) continue;
+                    if (!StringUtils.hasText(info.term()))
+                        continue;
                     if (!allowedDomainsLower.isEmpty()) {
                         String d = StringUtils.hasText(info.domain()) ? info.domain().trim().toLowerCase() : "general";
-                        if (!allowedDomainsLower.contains(d)) continue;
+                        if (!allowedDomainsLower.contains(d))
+                            continue;
                     }
                     String term = info.term().trim();
                     String domain = StringUtils.hasText(info.domain()) ? info.domain().trim() : "General";
@@ -682,7 +731,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 keywordRepository.saveAll(keywordsToSave);
             }
 
-            // 3. [Fix #3] Bulk fetch existing authors — by sourceId AND by name (eliminates N+1)
+            // 3. [Fix #3] Bulk fetch existing authors — by sourceId AND by name (eliminates
+            // N+1)
             Set<String> allAuthorIds = new HashSet<>();
             Set<String> allAuthorNames = new HashSet<>();
             for (ExternalPaperMetadata metadata : filteredMetas) {
@@ -697,7 +747,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                     }
                 }
                 for (ExternalAuthorInfo auth : authorInfos) {
-                    if (StringUtils.hasText(auth.sourceIdentifier()) && "OPENALEX".equalsIgnoreCase(auth.sourceType())) {
+                    if (StringUtils.hasText(auth.sourceIdentifier())
+                            && "OPENALEX".equalsIgnoreCase(auth.sourceType())) {
                         allAuthorIds.add(auth.sourceIdentifier().trim().toLowerCase());
                     }
                     if (StringUtils.hasText(auth.name())) {
@@ -707,8 +758,7 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             }
             List<Author> existingAuthorsList = authorRepository.findBySourceTypeAndSourceIdentifierIn(
                     "OPENALEX",
-                    allAuthorIds.isEmpty() ? List.of("") : allAuthorIds
-            );
+                    allAuthorIds.isEmpty() ? List.of("") : allAuthorIds);
             Map<String, Author> authorBySourceId = new HashMap<>();
             for (Author a : existingAuthorsList) {
                 if (StringUtils.hasText(a.getSourceIdentifier())) {
@@ -716,10 +766,10 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 }
             }
 
-            // [Fix #3] Bulk fetch by name — replaces N+1 findFirstByNameAndAffiliation calls
+            // [Fix #3] Bulk fetch by name — replaces N+1 findFirstByNameAndAffiliation
+            // calls
             List<Author> existingByName = authorRepository.findByNameInIgnoreCase(
-                    allAuthorNames.isEmpty() ? List.of("") : allAuthorNames
-            );
+                    allAuthorNames.isEmpty() ? List.of("") : allAuthorNames);
             Map<String, List<Author>> authorsByNameLower = new HashMap<>();
             for (Author a : existingByName) {
                 authorsByNameLower.computeIfAbsent(a.getName().toLowerCase().trim(), k -> new ArrayList<>()).add(a);
@@ -742,13 +792,15 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 }
 
                 for (ExternalAuthorInfo info : authorInfos) {
-                    if (!StringUtils.hasText(info.name())) continue;
+                    if (!StringUtils.hasText(info.name()))
+                        continue;
                     String trimmed = info.name().trim();
                     String affiliation = info.affiliation() != null ? info.affiliation().trim() : "";
                     String nameAffKey = trimmed.toLowerCase() + "||" + affiliation.toLowerCase();
 
                     Author author = null;
-                    if (StringUtils.hasText(info.sourceIdentifier()) && "OPENALEX".equalsIgnoreCase(info.sourceType())) {
+                    if (StringUtils.hasText(info.sourceIdentifier())
+                            && "OPENALEX".equalsIgnoreCase(info.sourceType())) {
                         author = authorBySourceId.get(info.sourceIdentifier().toLowerCase().trim());
                     }
                     if (author == null) {
@@ -779,7 +831,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                                 .sourceType(info.sourceType())
                                 .sourceIdentifier(info.sourceIdentifier())
                                 .build();
-                        if (StringUtils.hasText(info.sourceIdentifier()) && "OPENALEX".equalsIgnoreCase(info.sourceType())) {
+                        if (StringUtils.hasText(info.sourceIdentifier())
+                                && "OPENALEX".equalsIgnoreCase(info.sourceType())) {
                             authorBySourceId.put(info.sourceIdentifier().toLowerCase().trim(), author);
                         }
                         authorByNameAffiliation.put(nameAffKey, author);
@@ -789,7 +842,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                         newlyCreatedAuthors.add(author);
                     } else {
                         boolean dirty = false;
-                        if (StringUtils.hasText(info.sourceIdentifier()) && !Objects.equals(info.sourceIdentifier(), author.getSourceIdentifier())) {
+                        if (StringUtils.hasText(info.sourceIdentifier())
+                                && !Objects.equals(info.sourceIdentifier(), author.getSourceIdentifier())) {
                             author.setSourceType(info.sourceType());
                             author.setSourceIdentifier(info.sourceIdentifier());
                             dirty = true;
@@ -805,24 +859,31 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 }
             }
             if (!authorsToSave.isEmpty()) {
-                // Apply pre-fetched author stats (fetched outside transaction to avoid holding DB connection during HTTP)
+                // Apply pre-fetched author stats (fetched outside transaction to avoid holding
+                // DB connection during HTTP)
                 for (Author a : authorsToSave) {
                     if (!"OPENALEX".equalsIgnoreCase(a.getSourceType())
                             || !StringUtils.hasText(a.getSourceIdentifier())
-                            || a.getHIndex() != null) continue;
-                    ExternalAuthorProfile profile = prefetchedProfiles.get(a.getSourceIdentifier().toLowerCase().trim());
+                            || a.getHIndex() != null)
+                        continue;
+                    ExternalAuthorProfile profile = prefetchedProfiles
+                            .get(a.getSourceIdentifier().toLowerCase().trim());
                     if (profile != null) {
-                        if (profile.citedByCount() != null) a.setCitationCount(profile.citedByCount());
-                        if (profile.hIndex() != null) a.setHIndex(profile.hIndex());
+                        if (profile.citedByCount() != null)
+                            a.setCitationCount(profile.citedByCount());
+                        if (profile.hIndex() != null)
+                            a.setHIndex(profile.hIndex());
                     }
                 }
                 authorRepository.saveAll(authorsToSave);
             }
             for (Author a : newlyCreatedAuthors) {
-                if (a.getId() != null) newAuthorsThisRun.add(a);
+                if (a.getId() != null)
+                    newAuthorsThisRun.add(a);
             }
 
-            // 4. Batch process journals using local cache to avoid redundant database searches
+            // 4. Batch process journals using local cache to avoid redundant database
+            // searches
             Map<String, Journal> journalMap = new HashMap<>();
             List<Paper> papersToSave = new ArrayList<>();
             Map<ExternalPaperMetadata, Paper> metaToPaperMap = new HashMap<>();
@@ -831,7 +892,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             for (ExternalPaperMetadata metadata : filteredMetas) {
                 Paper paper = null;
                 if (StringUtils.hasText(metadata.sourceIdentifier()) && StringUtils.hasText(metadata.sourceType())) {
-                    String key = metadata.sourceType().toUpperCase() + ":" + metadata.sourceIdentifier().toLowerCase().trim();
+                    String key = metadata.sourceType().toUpperCase() + ":"
+                            + metadata.sourceIdentifier().toLowerCase().trim();
                     paper = paperBySource.get(key);
                 }
                 if (paper == null && StringUtils.hasText(metadata.doi())) {
@@ -848,12 +910,15 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                             .openAccess(false)
                             .build();
                     newPapersSet.add(paper);
-                    // Register in lookup maps immediately to prevent duplicate DOI within same batch
+                    // Register in lookup maps immediately to prevent duplicate DOI within same
+                    // batch
                     if (StringUtils.hasText(metadata.doi())) {
                         paperByDoi.put(metadata.doi().toLowerCase().trim(), paper);
                     }
-                    if (StringUtils.hasText(metadata.sourceIdentifier()) && StringUtils.hasText(metadata.sourceType())) {
-                        String regKey = metadata.sourceType().toUpperCase() + ":" + metadata.sourceIdentifier().toLowerCase().trim();
+                    if (StringUtils.hasText(metadata.sourceIdentifier())
+                            && StringUtils.hasText(metadata.sourceType())) {
+                        String regKey = metadata.sourceType().toUpperCase() + ":"
+                                + metadata.sourceIdentifier().toLowerCase().trim();
                         paperBySource.put(regKey, paper);
                     }
                 }
@@ -875,16 +940,19 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                         paper.setSourceType(truncateText(metadata.sourceType(), 50));
                         paper.setSourceIdentifier(truncateText(metadata.sourceIdentifier(), 100));
                     }
-                    paper.setPrimarySource(metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
+                    paper.setPrimarySource(
+                            metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
                     paper.setStatus(PaperStatus.ACTIVE);
                     paper.setReviewStatus(PaperReviewStatus.NONE);
                     if (paper.getCreatedAt() == null) {
                         paper.setCreatedAt(LocalDateTime.now());
                     }
                 } else {
-                    paper.setPrimarySource(metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
+                    paper.setPrimarySource(
+                            metadata.sourceType() != null ? truncateText(metadata.sourceType(), 50) : "OPENALEX");
                     paper.setStatus(PaperStatus.ACTIVE);
-                    paperReviewService.applyIncomingMetadata(paper, metadata, metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
+                    paperReviewService.applyIncomingMetadata(paper, metadata,
+                            metadata.sourceType() != null ? metadata.sourceType() : "OPENALEX");
                 }
 
                 if (StringUtils.hasText(metadata.journal())) {
@@ -936,18 +1004,24 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
             for (ExternalPaperMetadata metadata : filteredMetas) {
                 Paper paper = metaToPaperMap.get(metadata);
-                if (paper == null || paper.getId() == null) continue;
+                if (paper == null || paper.getId() == null)
+                    continue;
 
                 // Link keywords in batch — apply domain filter + per-paper cap
                 if (metadata.keywords() != null) {
-                    Set<Long> existingKeywordIds = paperToKeywordsMap.computeIfAbsent(paper.getId(), k -> new HashSet<>());
+                    Set<Long> existingKeywordIds = paperToKeywordsMap.computeIfAbsent(paper.getId(),
+                            k -> new HashSet<>());
                     int kwCount = 0;
                     for (ExternalKeywordInfo info : metadata.keywords()) {
-                        if (maxKwPerPaper > 0 && kwCount >= maxKwPerPaper) break;
-                        if (!StringUtils.hasText(info.term())) continue;
+                        if (maxKwPerPaper > 0 && kwCount >= maxKwPerPaper)
+                            break;
+                        if (!StringUtils.hasText(info.term()))
+                            continue;
                         if (!allowedDomainsLower.isEmpty()) {
-                            String d = StringUtils.hasText(info.domain()) ? info.domain().trim().toLowerCase() : "general";
-                            if (!allowedDomainsLower.contains(d)) continue;
+                            String d = StringUtils.hasText(info.domain()) ? info.domain().trim().toLowerCase()
+                                    : "general";
+                            if (!allowedDomainsLower.contains(d))
+                                continue;
                         }
                         Keyword kw = keywordMap.get(info.term().trim().toLowerCase());
                         if (kw != null && kw.getKeywordId() != null) {
@@ -974,13 +1048,15 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
                 Set<Long> existingAuthorIds = paperToAuthorsMap.computeIfAbsent(paper.getId(), k -> new HashSet<>());
                 for (ExternalAuthorInfo info : authorInfos) {
-                    if (!StringUtils.hasText(info.name())) continue;
+                    if (!StringUtils.hasText(info.name()))
+                        continue;
                     String trimmed = info.name().trim();
                     String affiliation = info.affiliation() != null ? info.affiliation().trim() : "";
                     String nameAffKey = trimmed.toLowerCase() + "||" + affiliation.toLowerCase();
 
                     Author author = null;
-                    if (StringUtils.hasText(info.sourceIdentifier()) && "OPENALEX".equalsIgnoreCase(info.sourceType())) {
+                    if (StringUtils.hasText(info.sourceIdentifier())
+                            && "OPENALEX".equalsIgnoreCase(info.sourceType())) {
                         author = authorBySourceId.get(info.sourceIdentifier().toLowerCase().trim());
                     }
                     if (author == null) {
@@ -989,7 +1065,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
 
                     if (author != null && author.getId() != null) {
                         if (!existingAuthorIds.contains(author.getId())) {
-                            paperAuthorsToSave.add(PaperAuthor.builder().paper(paper).author(author).authorPosition(info.authorPosition()).build());
+                            paperAuthorsToSave.add(PaperAuthor.builder().paper(paper).author(author)
+                                    .authorPosition(info.authorPosition()).build());
                             existingAuthorIds.add(author.getId());
                         }
                     }
@@ -1033,7 +1110,8 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             }
             if (!refsToSave.isEmpty()) {
                 try {
-                    TransactionTemplate requiresNew = new TransactionTemplate(transactionTemplate.getTransactionManager());
+                    TransactionTemplate requiresNew = new TransactionTemplate(
+                            transactionTemplate.getTransactionManager());
                     requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
                     requiresNew.executeWithoutResult(innerStatus -> {
                         paperReferenceRepository.saveAll(refsToSave);
@@ -1065,19 +1143,32 @@ public class PaperSyncServiceImpl implements PaperSyncService {
         return saved != null ? saved : 0;
     }
 
+    /**
+     * Check paper có ít nhất 1 keyword thuộc domain whitelist không — dùng để lọc
+     * paper trước khi lưu.
+     */
     private boolean hasAllowedDomainKeyword(ExternalPaperMetadata metadata, Set<String> allowedDomainsLower) {
-        if (metadata.keywords() == null) return false;
+        if (metadata.keywords() == null)
+            return false;
         for (ExternalKeywordInfo kw : metadata.keywords()) {
-            if (!StringUtils.hasText(kw.term())) continue;
+            if (!StringUtils.hasText(kw.term()))
+                continue;
             String d = StringUtils.hasText(kw.domain()) ? kw.domain().trim().toLowerCase() : "general";
-            if (allowedDomainsLower.contains(d)) return true;
+            if (allowedDomainsLower.contains(d))
+                return true;
         }
         return false;
     }
 
+    /**
+     * Cắt ngắn chuỗi nếu vượt maxLength, thêm "..." ở cuối — tránh lỗi khi lưu vào
+     * cột DB giới hạn độ dài.
+     */
     private String truncateText(String text, int maxLength) {
-        if (text == null) return null;
-        if (text.length() <= maxLength) return text;
+        if (text == null)
+            return null;
+        if (text.length() <= maxLength)
+            return text;
         return text.substring(0, maxLength - 3) + "...";
     }
 }

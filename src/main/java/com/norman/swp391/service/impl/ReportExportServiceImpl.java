@@ -24,6 +24,7 @@ public class ReportExportServiceImpl implements ReportExportService {
     private final KeywordTrendService keywordTrendService;
     private final PaperRepository paperRepository;
 
+    /** Xuất CSV top 50 keyword theo trend score. */
     @Override
     @Transactional(readOnly = true)
     public String exportTopicTrendsCsv() {
@@ -46,6 +47,7 @@ public class ReportExportServiceImpl implements ReportExportService {
         return sb.toString();
     }
 
+    /** Xuất CSV danh sách paper ACTIVE, sắp theo citation giảm dần, giới hạn tối đa 1000 dòng. */
     @Override
     @Transactional(readOnly = true)
     public String exportPapersCsv(int limit) {
@@ -71,6 +73,7 @@ public class ReportExportServiceImpl implements ReportExportService {
         return sb.toString();
     }
 
+    /** Escape 1 giá trị theo chuẩn CSV (bọc trong dấu ngoặc kép, nhân đôi dấu " bên trong). */
     private static String csv(String value) {
         if (value == null) {
             return "\"\"";

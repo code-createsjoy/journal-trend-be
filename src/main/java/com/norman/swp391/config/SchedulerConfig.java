@@ -11,6 +11,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @EnableScheduling
 public class SchedulerConfig {
 
+    /**
+     * Bean TransactionTemplate dùng để chạy khối lệnh trong transaction thủ công (ví dụ trong scheduler).
+     */
     @Bean
     TransactionTemplate transactionTemplate(PlatformTransactionManager transactionManager) {
         return new TransactionTemplate(transactionManager);

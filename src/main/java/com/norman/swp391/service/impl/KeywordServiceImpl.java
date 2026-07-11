@@ -25,12 +25,14 @@ public class KeywordServiceImpl implements KeywordService {
     private final PublicationTrendRepository publicationTrendRepository;
     private final KeywordTrendService keywordTrendService;
 
+    /** Lấy toàn bộ keyword trong hệ thống. */
     @Override
     @Transactional(readOnly = true)
     public List<KeywordResponse> listAll() {
         return KeywordMapper.toResponseList(keywordRepository.findAll());
     }
 
+    /** Lấy 1 keyword theo id. */
     @Override
     @Transactional(readOnly = true)
     public KeywordResponse getById(Long id) {
@@ -39,12 +41,14 @@ public class KeywordServiceImpl implements KeywordService {
         return KeywordMapper.toResponse(keyword);
     }
 
+    /** Danh sách keyword đang trending (delegate sang KeywordTrendService). */
     @Override
     @Transactional(readOnly = true)
     public List<TrendingKeywordResponse> getTrendingKeywords(Integer year, Integer month) {
         return keywordTrendService.findTrendingKeywordResponses(year, month);
     }
 
+    /** Lấy dữ liệu trend theo tháng của 1 keyword, giới hạn N tháng gần nhất (để vẽ chart). */
     @Override
     @Transactional(readOnly = true)
     public List<KeywordTrendResponse> getKeywordTrendChart(Long keywordId, int months) {

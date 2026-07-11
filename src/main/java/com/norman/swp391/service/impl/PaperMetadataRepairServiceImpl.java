@@ -20,6 +20,11 @@ public class PaperMetadataRepairServiceImpl implements PaperMetadataRepairServic
     private final PaperRepository paperRepository;
     private final OpenAlexClient openAlexClient;
 
+    /**
+     * Vá lại metadata (title/abstract/journal) còn thiếu cho các paper cũ, bằng cách
+     * gọi lại OpenAlex theo sourceIdentifier (hoặc DOI nếu không phải nguồn OpenAlex).
+     * Trả về số paper đã vá thành công.
+     */
     @Override
     @Transactional
     public int repairFromOpenAlex(int limit) {

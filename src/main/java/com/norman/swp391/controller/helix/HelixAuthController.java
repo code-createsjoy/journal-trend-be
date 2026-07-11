@@ -49,6 +49,7 @@ public class HelixAuthController {
         return helixApiService.register(request);
     }
 
+    /** Đăng xuất (thu hồi refresh token nếu có gửi lên). */
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(@RequestBody(required = false) RefreshTokenRequest request) {
         if (request != null && StringUtils.hasText(request.getRefreshToken())) {
@@ -57,12 +58,14 @@ public class HelixAuthController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Gửi email chứa link đặt lại mật khẩu. */
     @PostMapping("/forgot-password")
     public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         authService.forgotPassword(request);
         return ResponseEntity.ok().build();
     }
 
+    /** Đặt lại mật khẩu bằng token từ email. */
     @PostMapping("/reset-password")
     public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);
@@ -79,6 +82,7 @@ public class HelixAuthController {
         return new HelixAuthSession(helixApiService.currentUser(), token, null);
     }
 
+    /** Cập nhật tên hiển thị của user hiện tại, trả về session mới nhất. */
     @PutMapping("/profile")
     public HelixAuthSession updateProfile(
             @Valid @RequestBody HelixUpdateProfileRequest request, HttpServletRequest httpRequest) {
@@ -88,6 +92,7 @@ public class HelixAuthController {
         return new HelixAuthSession(helixApiService.currentUser(), token, null);
     }
 
+    /** Cập nhật 4 cờ tùy chọn thông báo (keyword/author/journal/email) của user hiện tại. */
     @PutMapping("/notification-preferences")
     public HelixAuthSession updateNotificationPreferences(
             @Valid @RequestBody HelixUpdateNotificationPreferencesRequest request, HttpServletRequest httpRequest) {

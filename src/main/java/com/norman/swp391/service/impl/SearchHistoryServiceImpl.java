@@ -27,6 +27,7 @@ public class SearchHistoryServiceImpl implements SearchHistoryService {
     private final SearchHistoryRepository searchHistoryRepository;
     private final UserRepository userRepository;
 
+    /** Ghi nhận 1 lượt tìm kiếm; nếu đã tìm cùng query+searchType trước đó thì chỉ cập nhật lại thời gian (đưa lên đầu). */
     @Override
     @Transactional
     public void recordSearch(String query, SearchType searchType) {
@@ -55,6 +56,7 @@ public class SearchHistoryServiceImpl implements SearchHistoryService {
                 .build());
     }
 
+    /** Lấy tối đa 10 lượt tìm kiếm gần nhất của user hiện tại. */
     @Override
     @Transactional(readOnly = true)
     public List<SearchHistoryResponse> getRecentSearches() {
@@ -69,6 +71,7 @@ public class SearchHistoryServiceImpl implements SearchHistoryService {
                 .toList();
     }
 
+    /** Lấy userId của user đang đăng nhập, throw nếu chưa xác thực. */
     private Long requireUserId() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {

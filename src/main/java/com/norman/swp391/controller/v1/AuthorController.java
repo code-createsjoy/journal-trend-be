@@ -49,6 +49,7 @@ public class AuthorController {
         return ApiResponse.ok(authorService.getById(id));
     }
 
+    /** Chi tiết 1 tác giả: tổng số paper, top keyword, các paper nổi bật nhất. */
     @GetMapping("/{id}/detail")
     public ApiResponse<AuthorDetailResponse> getAuthorDetail(@PathVariable Long id) {
         return ApiResponse.ok(authorService.getAuthorDetail(id));

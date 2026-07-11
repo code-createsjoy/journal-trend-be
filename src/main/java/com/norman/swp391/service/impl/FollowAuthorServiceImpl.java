@@ -30,6 +30,7 @@ public class FollowAuthorServiceImpl implements FollowAuthorService {
     private final AppProperties appProperties;
     private final PaperAuthorRepository paperAuthorRepository;
  
+    /** Follow 1 author — kiểm tra chưa follow trùng và chưa vượt giới hạn số author được follow. */
     @Override
     @Transactional
     public void follow(Long authorId) {
@@ -53,6 +54,7 @@ public class FollowAuthorServiceImpl implements FollowAuthorService {
                 .build());
     }
  
+    /** Unfollow 1 author (không lỗi nếu vốn dĩ chưa follow). */
     @Override
     @Transactional
     public void unfollow(Long authorId) {
@@ -61,6 +63,7 @@ public class FollowAuthorServiceImpl implements FollowAuthorService {
                 .ifPresent(followAuthorRepository::delete);
     }
  
+    /** Danh sách author mà user hiện tại đang follow, kèm số paper + hIndex (ưu tiên giá trị thật). */
     @Override
     @Transactional(readOnly = true)
     public List<AuthorResponse> listFollowed() {
@@ -73,13 +76,15 @@ public class FollowAuthorServiceImpl implements FollowAuthorService {
                         int paperCount = (int) paperAuthorRepository.countByAuthorId(author.getId());
                         int citations = author.getCitationCount();
                         response.setPapers(Math.max(paperCount, 1));
-                        response.setHIndex(estimateHIndex(citations));
+                        // Ưu tiên hIndex thật đã enrich từ OpenAlex; chỉ ước lượng khi chưa có (null)
+                        response.setHIndex(author.getHIndex() != null ? author.getHIndex() : estimateHIndex(citations));
                     }
                     return response;
                 })
                 .toList();
     }
 
+    /** Ước lượng h-index từ tổng citation (h sao cho h^2 <= citations) — chỉ dùng khi chưa enrich được hIndex thật. */
     private int estimateHIndex(int citations) {
         int h = 0;
         while ((h + 1) * (h + 1) <= citations) {
@@ -88,6 +93,7 @@ public class FollowAuthorServiceImpl implements FollowAuthorService {
         return Math.max(h, 1);
     }
  
+    /** Lấy userId của user đang đăng nhập, throw nếu chưa xác thực. */
     private Long requireUserId() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {

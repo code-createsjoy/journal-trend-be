@@ -79,6 +79,10 @@ public class AuthorServiceImpl implements AuthorService {
         return PageResponse.from(page, PaperMapper.toResponseList(pageContent));
     }
 
+    /**
+     * Lấy thông tin chi tiết 1 tác giả: tổng số paper, top keyword hay nghiên cứu,
+     * và các paper nổi bật nhất của tác giả đó.
+     */
     @Override
     @Transactional(readOnly = true)
     public AuthorDetailResponse getAuthorDetail(Long authorId) {
@@ -112,6 +116,10 @@ public class AuthorServiceImpl implements AuthorService {
                 .build();
     }
 
+    /**
+     * 3 tác giả nổi bật: nhiều paper nhất, citation cao nhất, h-index cao nhất.
+     * Mỗi field có thể null nếu chưa đủ dữ liệu phù hợp.
+     */
     @Override
     @Transactional(readOnly = true)
     public AuthorSpotlightResponse getSpotlight() {
@@ -140,6 +148,9 @@ public class AuthorServiceImpl implements AuthorService {
                 .build();
     }
 
+    /**
+     * Map Author entity sang AuthorResponse, kèm set số paper (chỉ đếm paper ACTIVE).
+     */
     private AuthorResponse toResponseWithPaperCount(Author author) {
         AuthorResponse response = AuthorMapper.toResponse(author);
         // Dùng count ACTIVE-only để nhất quán với mostPapers (findAuthorsOrderByPaperCountDesc)

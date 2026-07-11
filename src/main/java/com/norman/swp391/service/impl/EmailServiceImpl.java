@@ -25,6 +25,10 @@ public class EmailServiceImpl implements EmailService {
     private final JavaMailSender mailSender;
     private final AppProperties appProperties;
 
+    /**
+     * Gửi email xác thực tài khoản (chứa link kèm token) — chạy bất đồng bộ (@Async),
+     * không chặn luồng đăng ký chính. Lỗi gửi mail chỉ log, không throw ra ngoài.
+     */
     @Async
     @Override
     public void sendVerificationEmail(String toEmail, String fullName, String token) {
@@ -48,6 +52,7 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    /** Dựng nội dung HTML (inline CSS) cho email xác thực tài khoản. */
     private String buildVerificationHtmlContent(String fullName, String verifyUrl) {
         int currentYear = Year.now().getValue();
         int expiryHours = appProperties.getEmailVerificationExpirationMinutes() / 60;
@@ -101,6 +106,7 @@ public class EmailServiceImpl implements EmailService {
                """.formatted(fullName, verifyUrl, verifyUrl, verifyUrl, expiryHours, currentYear);
     }
 
+    /** Gửi email đặt lại mật khẩu (chứa link kèm token) — chạy bất đồng bộ. */
     @Async
     @Override
     public void sendPasswordResetEmail(String toEmail, String token) {
@@ -123,6 +129,7 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    /** Dựng nội dung HTML (inline CSS) cho email đặt lại mật khẩu. */
     private String buildPasswordResetHtmlContent(String resetUrl) {
         int currentYear = Year.now().getValue();
         int expiryMinutes = appProperties.getPasswordResetExpirationMinutes();
@@ -176,6 +183,10 @@ public class EmailServiceImpl implements EmailService {
                """.formatted(resetUrl, resetUrl, resetUrl, expiryMinutes, currentYear);
     }
 
+    /**
+     * Gửi email tổng hợp các paper mới khớp với keyword/author/journal mà user đang follow
+     * — chạy bất đồng bộ, gọi từ NotificationServiceImpl sau mỗi lần sync.
+     */
     @Async
     @Override
     public void sendNewPaperNotificationsEmail(String toEmail, String fullName, java.util.List<com.norman.swp391.entity.Paper> papers) {
@@ -197,6 +208,7 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    /** Dựng nội dung HTML liệt kê danh sách paper mới cho email thông báo. */
     private String buildNewPapersHtmlContent(String fullName, java.util.List<com.norman.swp391.entity.Paper> papers) {
         int currentYear = Year.now().getValue();
         StringBuilder papersListHtml = new StringBuilder();

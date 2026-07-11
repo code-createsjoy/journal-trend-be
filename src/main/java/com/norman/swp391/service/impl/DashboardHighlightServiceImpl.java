@@ -31,6 +31,10 @@ public class DashboardHighlightServiceImpl implements DashboardHighlightService 
     private final FollowKeywordRepository followKeywordRepository;
     private final KeywordRepository keywordRepository;
 
+    /**
+     * Tổng hợp 4 thẻ highlight cho dashboard: keyword hot nhất, author nổi bật nhất,
+     * paper nổi bật nhất (theo citation, fallback theo lượt lưu), topic được follow nhiều nhất.
+     */
     @Override
     @Transactional(readOnly = true)
     public HelixDashboardHighlights buildHighlights() {
@@ -70,6 +74,10 @@ public class DashboardHighlightServiceImpl implements DashboardHighlightService 
         return new HelixDashboardHighlights(topKeyword, topAuthor, topPaper, topFollowedTopic);
     }
 
+    /**
+     * Fallback khi không có paper nào có citation — lấy paper được lưu (bookmark)
+     * vào collection nhiều nhất để làm highlight.
+     */
     private Optional<HelixHighlightCard> mostSavedPaperCard() {
         List<Object[]> rows = collectionPaperRepository.findMostSavedPaperIds(PageRequest.of(0, 1));
         if (rows.isEmpty()) {
@@ -85,6 +93,9 @@ public class DashboardHighlightServiceImpl implements DashboardHighlightService 
                 "saves"));
     }
 
+    /**
+     * Lấy keyword đang được nhiều user follow nhất, dùng làm thẻ "topic followed nhiều nhất".
+     */
     private Optional<HelixHighlightCard> mostFollowedKeywordCard() {
         List<Object[]> rows = followKeywordRepository.countFollowsByKeyword(PageRequest.of(0, 1));
         if (rows.isEmpty()) {
@@ -100,6 +111,7 @@ public class DashboardHighlightServiceImpl implements DashboardHighlightService 
                 "followers"));
     }
 
+    /** Chuyển 1 Author thành thẻ highlight, hiển thị metric = số citation. */
     private HelixHighlightCard authorCard(Author author) {
         return card(
                 String.valueOf(author.getId()),
@@ -109,6 +121,7 @@ public class DashboardHighlightServiceImpl implements DashboardHighlightService 
                 "citations");
     }
 
+    /** Chuyển 1 Paper thành thẻ highlight, hiển thị metric = số citation. */
     private HelixHighlightCard paperCardByCitations(Paper paper) {
         return card(
                 String.valueOf(paper.getId()),
@@ -118,19 +131,23 @@ public class DashboardHighlightServiceImpl implements DashboardHighlightService 
                 "citations");
     }
 
+    /** Lấy trendScore an toàn (trả 0 nếu null) để tránh NullPointerException. */
     private static double score(TrendingKeywordResponse keyword) {
         return keyword.getTrendScore() != null ? keyword.getTrendScore().doubleValue() : 0;
     }
 
+    /** Helper dựng nhanh 1 HelixHighlightCard từ các field rời rạc. */
     private static HelixHighlightCard card(
             String id, String title, String subtitle, double metric, String metricLabel) {
         return new HelixHighlightCard(id, title, subtitle, metric, metricLabel);
     }
 
+    /** Thẻ rỗng dùng khi không có dữ liệu phù hợp cho mục highlight đó. */
     private static HelixHighlightCard emptyCard(String kind, String title) {
         return new HelixHighlightCard("", title, kind, 0, "");
     }
 
+    /** Cắt ngắn chuỗi (VD title paper) nếu quá dài, thêm "…" ở cuối. */
     private static String truncate(String text, int max) {
         if (text == null) {
             return "";

@@ -70,10 +70,16 @@ public class HelixApiService {
     private final PaperReviewService paperReviewService;
     private final KeywordRepository keywordRepository;
 
+    /**
+     * Đăng nhập và trả về phiên làm việc Helix (kèm token).
+     */
     public HelixAuthSession login(HelixLoginRequest request) {
         return toHelixSession(authService.login(new LoginRequest(request.email(), request.password())));
     }
 
+    /**
+     * Đăng ký tài khoản researcher mới và trả về phiên Helix tương ứng.
+     */
     public HelixAuthSession register(HelixRegisterRequest request) {
         UserResponse user = authService.register(RegisterRequest.builder()
                 .fullName(request.name())
@@ -84,14 +90,23 @@ public class HelixApiService {
         return new HelixAuthSession(toHelixUser(user), null, null);
     }
 
+    /**
+     * Lấy thông tin người dùng hiện đang đăng nhập.
+     */
     public HelixUser currentUser() {
         return toHelixUser(authService.getCurrentUser());
     }
 
+    /**
+     * Cập nhật tùy chọn nhận thông báo của người dùng hiện tại.
+     */
     public HelixUser updateNotificationPreferences(UpdateNotificationPreferencesRequest request) {
         return toHelixUser(authService.updateNotificationPreferences(request));
     }
 
+    /**
+     * Liệt kê bài báo theo bộ lọc (danh mục, từ khóa, tìm kiếm) cho danh sách Helix.
+     */
     public List<HelixPaper> listPapers(String category, String excludeId, Integer limit, String q, Long keywordId) {
         int pageSize = limit != null && limit > 0 ? Math.min(limit, 100) : 100;
         Pageable pageable = PageRequest.of(0, pageSize, Sort.by("citationCount").descending());
@@ -134,10 +149,16 @@ public class HelixApiService {
         return papers;
     }
 
+    /**
+     * Lấy chi tiết một bài báo theo id.
+     */
     public HelixPaper getPaper(String id) {
         return toHelixPaper(paperService.getById(Long.parseLong(id)));
     }
 
+    /**
+     * Lấy hồ sơ tác giả gồm số bài, số trích dẫn và h-index.
+     */
     @Transactional(readOnly = true)
     public HelixAuthorProfile getAuthorProfile(String id) {
         long authorId = Long.parseLong(id);
@@ -157,6 +178,9 @@ public class HelixApiService {
                 author.getSourceType() != null ? author.getSourceType() : "Local DB");
     }
 
+    /**
+     * Lấy danh sách tác giả nổi bật, giới hạn theo limit.
+     */
     @Transactional(readOnly = true)
     public List<HelixAuthor> listFeaturedAuthors(int limit) {
         int size = Math.max(1, Math.min(limit, 50));
@@ -171,6 +195,9 @@ public class HelixApiService {
                 .toList();
     }
 
+    /**
+     * Liệt kê tác giả có phân trang, hỗ trợ tìm kiếm, lọc theo chủ đề và sắp xếp.
+     */
     @Transactional(readOnly = true)
     public PageResponse<HelixAuthor> listAuthors(int page, int size, String q, String topicId, String sortBy) {
         int pageSize = Math.max(1, Math.min(size, 100));
@@ -241,6 +268,9 @@ public class HelixApiService {
         return PageResponse.from(authorPage, helixAuthors);
     }
 
+    /**
+     * Liệt kê các bài báo của một tác giả cụ thể.
+     */
     public List<HelixPaper> listAuthorPapers(String authorId, Integer limit) {
         int size = limit != null && limit > 0 ? Math.min(limit, 100) : 50;
         var page = authorService.getPapersByAuthor(Long.parseLong(authorId), PageRequest.of(0, size));
@@ -255,6 +285,9 @@ public class HelixApiService {
                 .toList();
     }
 
+    /**
+     * Liệt kê các chủ đề đang thịnh hành, giới hạn theo limit.
+     */
     public List<HelixTopicTrend> listTrendingTopics(int limit) {
         return keywordTrendService.findTrendingTopics().stream()
                 .limit(limit)
@@ -267,6 +300,9 @@ public class HelixApiService {
                 .toList();
     }
 
+    /**
+     * Lấy chi tiết một chủ đề (từ khóa hoặc trending topic) theo id.
+     */
     public HelixTopicDetail getTopicDetail(String id) {
         long hash = Long.parseLong(id);
         Optional<Keyword> kwOpt = keywordRepository.findById(hash);
@@ -294,6 +330,9 @@ public class HelixApiService {
         return new HelixTopicDetail(id, "General", "General research field", 0, 0.0);
     }
 
+    /**
+     * Liệt kê bài báo thuộc một chủ đề (từ khóa hoặc domain) cụ thể.
+     */
     @Transactional(readOnly = true)
     public List<HelixPaper> listPapersByTopic(String topicId, Integer limit) {
         int pageSize = limit != null && limit > 0 ? Math.min(limit, 100) : 50;
@@ -341,6 +380,9 @@ public class HelixApiService {
                 .toList();
     }
 
+    /**
+     * Tổng hợp dữ liệu cho trang phân tích (KPI, xu hướng, biểu đồ, highlight).
+     */
     @Transactional(readOnly = true)
     public HelixAnalyticsSnapshot analyticsSnapshot() {
         var stats = adminService.getSystemStats();
@@ -415,6 +457,9 @@ public class HelixApiService {
                 dashboardHighlightService.buildHighlights());
     }
 
+    /**
+     * Liệt kê thông báo của người dùng hiện tại; nếu rỗng thì trả về thông báo mặc định.
+     */
     public List<HelixNotification> listNotifications() {
         var page = notificationService.listForCurrentUser(PageRequest.of(0, 20));
         List<HelixNotification> items = new ArrayList<>();
@@ -434,41 +479,65 @@ public class HelixApiService {
         return items;
     }
 
+    /**
+     * Đánh dấu một thông báo là đã đọc.
+     */
     public void markNotificationRead(Long notificationId) {
         notificationService.markAsRead(notificationId);
     }
 
+    /**
+     * Đánh dấu tất cả thông báo là đã đọc.
+     */
     public void markAllNotificationsRead() {
         notificationService.markAllAsRead();
     }
 
+    /**
+     * Liệt kê các bộ sưu tập của người dùng hiện tại.
+     */
     public List<HelixCollection> listCollections() {
         return collectionService.listForCurrentUser().stream()
                 .map(c -> toHelixCollection(c.getId()))
                 .toList();
     }
 
+    /**
+     * Lấy chi tiết một bộ sưu tập theo id.
+     */
     public HelixCollection getCollection(String id) {
         return toHelixCollection(Long.parseLong(id));
     }
 
+    /**
+     * Tạo mới một bộ sưu tập cho người dùng hiện tại.
+     */
     @Transactional
     public HelixCollection createCollection(String name) {
         var created = collectionService.create(CollectionRequest.builder().name(name).build());
         return toHelixCollection(created.getId());
     }
 
+    /**
+     * Cập nhật tên của một bộ sưu tập theo id.
+     */
     @Transactional
     public HelixCollection updateCollection(String id, String name) {
         collectionService.update(Long.parseLong(id), CollectionRequest.builder().name(name).build());
         return toHelixCollection(Long.parseLong(id));
     }
 
+    /**
+     * Xóa một bộ sưu tập theo id.
+     */
     @Transactional
     public void deleteCollection(String id) {
         collectionService.delete(Long.parseLong(id));
     }
 
+    /**
+     * Đồng bộ trạng thái một bài báo trong nhiều bộ sưu tập theo danh sách collectionIds yêu cầu.
+     */
     @Transactional
     public List<HelixCollection> savePaperToCollections(HelixSavePaperRequest request) {
         Long paperId = Long.parseLong(request.paperId());
@@ -488,12 +557,18 @@ public class HelixApiService {
         return listCollections();
     }
 
+    /**
+     * Xóa một bài báo khỏi bộ sưu tập.
+     */
     @Transactional
     public HelixCollection removePaperFromCollection(HelixRemovePaperRequest request) {
         collectionService.removePaper(Long.parseLong(request.collectionId()), Long.parseLong(request.paperId()));
         return toHelixCollection(Long.parseLong(request.collectionId()));
     }
 
+    /**
+     * Tổng hợp dữ liệu cho trang tổng quan admin (nhật ký đồng bộ, bài chờ duyệt, bất thường).
+     */
     @Transactional(readOnly = true)
     public HelixAdminOverview adminOverview() {
         List<HelixAuditLog> logs = syncLogRepository.findRecentWithAdmin(PageRequest.of(0, 10)).stream()
@@ -521,11 +596,17 @@ public class HelixApiService {
                 logs, pending, anomalies, paperReviewService.countByReviewStatus(PaperReviewStatus.PENDING_REVIEW));
     }
 
+    /**
+     * Kích hoạt đồng bộ dữ liệu thủ công từ admin.
+     */
     public HelixSyncResult triggerAdminSync() {
         SyncLogResponse log = adminService.triggerSync();
         return new HelixSyncResult(log.getPapersInserted(), log.getStatus().name(), toSyncMessage(log));
     }
 
+    /**
+     * Lấy trạng thái đồng bộ gần nhất.
+     */
     public HelixSyncResult latestSyncStatus() {
         SyncLogResponse log = paperSyncService.getLatestSyncStatus();
         if (log == null) {
@@ -534,11 +615,17 @@ public class HelixApiService {
         return new HelixSyncResult(log.getPapersInserted(), log.getStatus().name(), toSyncMessage(log));
     }
 
+    /**
+     * Reset các tiến trình đồng bộ bị treo (stale) và trả về trạng thái mới nhất.
+     */
     public HelixSyncResult resetStaleSync() {
         paperSyncService.resetStaleRunningSyncs();
         return latestSyncStatus();
     }
 
+    /**
+     * Chuyển đổi collectionId thành DTO HelixCollection kèm danh sách paperIds.
+     */
     private HelixCollection toHelixCollection(Long collectionId) {
         CollectionResponse c = collectionService.getById(collectionId);
         List<String> paperIds = collectionService.listPapers(collectionId).stream()
@@ -551,6 +638,9 @@ public class HelixApiService {
                 c.getCreatedAt() != null ? c.getCreatedAt().toString() : "");
     }
 
+    /**
+     * Chuyển đổi một Paper thành DTO HelixPendingReviewPaper cho danh sách chờ duyệt.
+     */
     private HelixPendingReviewPaper toPendingReview(Paper paper) {
         int year = paper.getPublicationDate() != null ? paper.getPublicationDate().getYear()
                 : LocalDate.now().getYear();
@@ -578,6 +668,9 @@ public class HelixApiService {
                 paper.getReviewStatus() != null ? paper.getReviewStatus().name() : "NONE");
     }
 
+    /**
+     * Tạo thông điệp mô tả trạng thái của một lượt đồng bộ.
+     */
     private String toSyncMessage(SyncLogResponse log) {
         if (log.getStatus() == SyncStatus.RUNNING) {
             return "Syncing metadata from OpenAlex…";
@@ -589,10 +682,16 @@ public class HelixApiService {
         return "Failed · " + (err != null ? err : "see audit log");
     }
 
+    /**
+     * Chuyển đổi AuthResponse thành HelixAuthSession (user + token).
+     */
     private HelixAuthSession toHelixSession(AuthResponse auth) {
         return new HelixAuthSession(toHelixUser(auth.getUser()), auth.getAccessToken(), auth.getRefreshToken());
     }
 
+    /**
+     * Chuyển đổi UserResponse thành DTO HelixUser.
+     */
     private HelixUser toHelixUser(UserResponse user) {
         String role = user.getRole() == UserRole.SUPER_ADMIN ? "SUPER_ADMIN" : user.getRole().name();
         return new HelixUser(
@@ -605,6 +704,9 @@ public class HelixApiService {
                 user.isNotifyEmail());
     }
 
+    /**
+     * Nạp danh sách tác giả tham chiếu (HelixAuthorRef) theo từng paperId.
+     */
     private Map<Long, List<HelixAuthorRef>> loadAuthorRefsByPaper(List<Long> paperIds) {
         if (paperIds == null || paperIds.isEmpty()) {
             return Map.of();
@@ -618,6 +720,9 @@ public class HelixApiService {
         return map;
     }
 
+    /**
+     * Chuyển đổi PaperDetailResponse thành DTO HelixPaper đầy đủ chi tiết.
+     */
     private HelixPaper toHelixPaper(PaperDetailResponse detail) {
         List<String> authors = detail.getAuthors() != null
                 ? detail.getAuthors().stream().map(AuthorResponse::getName).toList()
@@ -658,6 +763,9 @@ public class HelixApiService {
                 refs);
     }
 
+    /**
+     * Chuyển đổi PaperResponse thành DTO HelixPaper dạng tóm tắt cho danh sách.
+     */
     private HelixPaper toHelixPaperSummary(PaperResponse p, List<HelixAuthorRef> authorRefs, PaperTopicMeta topicMeta) {
         int year = p.getPublicationDate() != null ? p.getPublicationDate().getYear() : LocalDate.now().getYear();
         List<String> authors = authorRefs.stream().map(HelixAuthorRef::name).toList();
@@ -681,11 +789,17 @@ public class HelixApiService {
     }
 
     private record PaperTopicMeta(List<HelixTopicRef> keywords, String category, double trendScore) {
+        /**
+         * Trả về PaperTopicMeta mặc định khi bài báo không có chủ đề nào.
+         */
         static PaperTopicMeta empty() {
             return new PaperTopicMeta(List.of(), "General", 0);
         }
     }
 
+    /**
+     * Nạp metadata chủ đề (từ khóa, danh mục, điểm xu hướng) cho từng paperId.
+     */
     private Map<Long, PaperTopicMeta> loadPaperTopicMeta(List<Long> paperIds) {
         if (paperIds == null || paperIds.isEmpty()) {
             return Map.of();
@@ -720,6 +834,9 @@ public class HelixApiService {
         return result;
     }
 
+    /**
+     * Nạp điểm xu hướng hàng tháng (delta phần trăm) cho tập từ khóa theo năm/tháng.
+     */
     private Map<Long, Double> loadMonthlyKeywordTrendScores(Set<Long> keywordIds, int year, int month) {
         if (keywordIds == null || keywordIds.isEmpty()) {
             return Map.of();
@@ -735,6 +852,9 @@ public class HelixApiService {
         return scores;
     }
 
+    /**
+     * Tính điểm xu hướng cao nhất trong tháng hiện tại trong số các từ khóa cho trước.
+     */
     private double maxMonthlyKeywordTrendScore(List<Long> keywordIds) {
         if (keywordIds == null || keywordIds.isEmpty()) {
             return 0;
@@ -746,6 +866,9 @@ public class HelixApiService {
                 keywordIds.stream().mapToDouble(id -> scores.getOrDefault(id, 0.0)).max().orElse(0));
     }
 
+    /**
+     * Dựng dữ liệu tốc độ xuất bản (velocity) 12 tháng gần nhất cho biểu đồ.
+     */
     private List<HelixPublicationVelocityPoint> buildPublicationVelocity() {
         List<HelixPublicationVelocityPoint> points = new ArrayList<>();
         YearMonth cursor = YearMonth.now().minusMonths(11);
@@ -758,6 +881,9 @@ public class HelixApiService {
         return points;
     }
 
+    /**
+     * Dựng danh sách lát cắt danh mục (kèm màu) từ top 5 chủ đề thịnh hành cho biểu đồ tròn.
+     */
     private List<HelixCategorySlice> buildCategorySlices(List<TrendingTopicResponse> trending) {
         String[] fills = { "#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6" };
         List<HelixCategorySlice> slices = new ArrayList<>();
@@ -772,6 +898,9 @@ public class HelixApiService {
         return slices;
     }
 
+    /**
+     * Dựng các điểm dữ liệu cho biểu đồ radar từ top 6 chủ đề thịnh hành.
+     */
     private List<HelixRadarFieldPoint> buildRadarFields(List<TrendingTopicResponse> trending) {
         return trending.stream()
                 .limit(6)
@@ -782,6 +911,9 @@ public class HelixApiService {
                 .toList();
     }
 
+    /**
+     * Dựng dữ liệu bản đồ nhiệt (heatmap) giả lập theo tuần và ngày trong tuần.
+     */
     private List<HelixHeatmapCell> buildHeatmap(int seed) {
         List<HelixHeatmapCell> cells = new ArrayList<>();
         for (int w = 1; w <= 12; w++) {
@@ -793,6 +925,9 @@ public class HelixApiService {
         return cells;
     }
 
+    /**
+     * Dựng thông báo mặc định khi người dùng chưa có thông báo thật nào (chào mừng hoặc bài trending).
+     */
     private List<HelixNotification> buildFallbackNotifications() {
         if (paperRepository.countByStatus(PaperStatus.ACTIVE) == 0) {
             return List.of(new HelixNotification(
@@ -814,6 +949,9 @@ public class HelixApiService {
                 .toList();
     }
 
+    /**
+     * Xử lý tiêu đề bài báo bị lỗi encoding bằng cách thay thế bằng đoạn abstract hoặc DOI.
+     */
     private String resolvePaperTitle(Paper paper) {
         String title = paper.getTitle();
         if (!isLikelyCorruptedText(title)) {
@@ -834,6 +972,9 @@ public class HelixApiService {
         return title != null ? title : "Untitled paper";
     }
 
+    /**
+     * Xử lý tên tạp chí bị lỗi encoding bằng cách thay thế bằng nguồn dữ liệu chính.
+     */
     private String resolvePaperJournal(Paper paper) {
         String journal = paper.getJournal();
         if (!isLikelyCorruptedText(journal)) {
@@ -842,6 +983,9 @@ public class HelixApiService {
         return paper.getPrimarySource() != null ? paper.getPrimarySource() : "Unknown journal";
     }
 
+    /**
+     * Kiểm tra một chuỗi có khả năng bị lỗi encoding (nhiều ký tự "?" hoặc thay thế) hay không.
+     */
     private boolean isLikelyCorruptedText(String text) {
         if (!StringUtils.hasText(text)) {
             return false;
@@ -853,6 +997,9 @@ public class HelixApiService {
         return questionMarks * 3 >= text.length();
     }
 
+    /**
+     * Ánh xạ mã nguồn dữ liệu nội bộ sang tên hiển thị (OpenAlex, CrossRef, Semantic Scholar).
+     */
     private String mapSource(String source) {
         if (source == null) {
             return "OpenAlex";
@@ -864,11 +1011,17 @@ public class HelixApiService {
         };
     }
 
+    /**
+     * Ước tính impact factor dựa trên số trích dẫn chia cho tuổi bài báo.
+     */
     private double estimateImpactFactor(int citations, int year) {
         int age = Math.max(1, LocalDate.now().getYear() - year);
         return round(citations / (double) age / 10.0);
     }
 
+    /**
+     * Ước tính h-index từ số lượt trích dẫn khi dữ liệu gốc không có sẵn.
+     */
     private int estimateHIndex(int citations) {
         int h = 0;
         while ((h + 1) * (h + 1) <= citations) {
@@ -877,6 +1030,9 @@ public class HelixApiService {
         return Math.max(h, 1);
     }
 
+    /**
+     * Định dạng số lượng lớn thành chuỗi rút gọn (ví dụ 1.2M, 3.4K).
+     */
     private String formatVolume(long total) {
         if (total >= 1_000_000) {
             return String.format(Locale.US, "%.1fM", total / 1_000_000.0);
@@ -887,6 +1043,9 @@ public class HelixApiService {
         return String.valueOf(total);
     }
 
+    /**
+     * Làm tròn số thực đến 1 chữ số thập phân.
+     */
     private double round(double v) {
         return Math.round(v * 10.0) / 10.0;
     }

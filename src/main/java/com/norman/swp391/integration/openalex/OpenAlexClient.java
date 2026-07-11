@@ -151,6 +151,9 @@ public class OpenAlexClient {
         return results;
     }
 
+    /**
+     * Lấy hồ sơ chi tiết một tác giả từ OpenAlex theo authorId.
+     */
     public Optional<ExternalAuthorProfile> fetchAuthorProfile(String authorId) {
         String normalized = normalizeAuthorId(authorId);
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
@@ -283,6 +286,9 @@ public class OpenAlexClient {
         return null;
     }
 
+    /**
+     * Trích xuất từ khóa (keywords) từ topics và concepts của một work OpenAlex.
+     */
     private List<ExternalKeywordInfo> mapOpenAlexKeywords(JsonNode topicsNode, JsonNode conceptsNode) {
         List<ExternalKeywordInfo> keywords = new ArrayList<>();
         Set<String> seen = new HashSet<>();
@@ -444,6 +450,9 @@ public class OpenAlexClient {
         }
     }
 
+    /**
+     * Gắn tham số api_key vào request nếu đã cấu hình.
+     */
     private void appendApiKey(UriComponentsBuilder builder) {
         if (StringUtils.hasText(appProperties.getOpenalex().getApiKey())) {
             builder.queryParam("api_key", appProperties.getOpenalex().getApiKey());

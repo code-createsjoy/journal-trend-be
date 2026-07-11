@@ -17,6 +17,9 @@ public class PaperReviewMaintenanceScheduler {
     private final AppProperties appProperties;
 
     @Scheduled(cron = "0 30 3 * * *")
+    /**
+     * Chạy hằng ngày lúc 3h30 sáng để tự động expire các review PENDING quá hạn SLA.
+     */
     public void expireStalePendingReviews() {
         if (!appProperties.isSchedulerEnabled()) {
             return;

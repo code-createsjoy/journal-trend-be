@@ -32,6 +32,7 @@ public class AiAnalysisController {
         return ApiResponse.ok("AI analysis completed", aiAnalysisService.analyzeTrend(request));
     }
 
+    /** So sánh AI nhiều keyword trending cùng lúc, chỉ ra keyword nào đáng theo đuổi nhất. */
     @PostMapping("/analyze-top-trends")
     public ApiResponse<AiTopTrendsAnalysisResponse> analyzeTopTrends(@Valid @RequestBody AiTopTrendsAnalysisRequest request) {
         return ApiResponse.ok("AI top trends analysis completed", aiAnalysisService.analyzeTopTrends(request));

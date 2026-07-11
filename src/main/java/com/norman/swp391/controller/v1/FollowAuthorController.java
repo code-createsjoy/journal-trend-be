@@ -22,18 +22,21 @@ public class FollowAuthorController {
  
     private final FollowAuthorService followAuthorService;
  
+    /** Follow 1 author. */
     @PostMapping("/{authorId}")
     public ApiResponse<Void> follow(@PathVariable Long authorId) {
         followAuthorService.follow(authorId);
         return ApiResponse.okMessage("Author followed");
     }
- 
+
+    /** Unfollow 1 author. */
     @DeleteMapping("/{authorId}")
     public ApiResponse<Void> unfollow(@PathVariable Long authorId) {
         followAuthorService.unfollow(authorId);
         return ApiResponse.okMessage("Author unfollowed");
     }
- 
+
+    /** Danh sách author đang follow. */
     @GetMapping
     public ApiResponse<List<AuthorResponse>> listFollowed() {
         return ApiResponse.ok(followAuthorService.listFollowed());

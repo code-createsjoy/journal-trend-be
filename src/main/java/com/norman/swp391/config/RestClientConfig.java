@@ -12,6 +12,9 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class RestClientConfig {
 
+    /**
+     * RestClient dùng để gọi API bên ngoài (OpenAlex...) với timeout cấu hình theo app.sync.
+     */
     @Bean
     RestClient externalApiRestClient(AppProperties appProperties) {
 
@@ -29,6 +32,9 @@ public class RestClientConfig {
                 .build();
     }
 
+    /**
+     * RestClient riêng cho Groq AI (timeout đọc dài hơn do chờ LLM sinh phản hồi).
+     */
     @Bean("groqRestClient")
     RestClient groqRestClient(AppProperties appProperties) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();

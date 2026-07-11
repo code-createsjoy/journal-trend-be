@@ -81,29 +81,34 @@ public class HelixAdminController {
         return helixApiService.latestSyncStatus();
     }
 
+    /** Tính lại publication_trends cho N tháng trước tới nay — dùng khi seed dữ liệu lịch sử. */
     @PostMapping("/trends/backfill")
     public HelixSyncResult backfillTrends(@RequestParam(defaultValue = "12") int months) {
         keywordTrendService.backfillHistoricalMonths(months);
         return helixApiService.latestSyncStatus();
     }
 
+    /** Số liệu minh bạch cho báo cáo/thuyết trình về cách tính trending. */
     @GetMapping("/trends/demo-stats")
     public TrendDemoStatsResponse trendDemoStats() {
         return trendDemoStatsService.getStats();
     }
 
+    /** Vá lại metadata (title/abstract/journal) còn thiếu cho paper cũ, gọi lại OpenAlex. */
     @PostMapping("/papers/repair-metadata")
     public HelixSyncResult repairMetadata(@RequestParam(defaultValue = "50") int limit) {
         int repaired = paperMetadataRepairService.repairFromOpenAlex(limit);
         return new HelixSyncResult(repaired, "SUCCESS", "Repaired " + repaired + " papers from OpenAlex");
     }
 
+    /** Backfill thủ công citationCount/hIndex cho author chưa enrich (dùng dọn backlog lớn). */
     @PostMapping("/authors/enrich-stats")
     public HelixSyncResult enrichAuthorStats(@RequestParam(defaultValue = "10000") int limit) {
         int enriched = paperSyncService.enrichAuthorStats(limit);
         return new HelixSyncResult(enriched, "SUCCESS", "Enriched " + enriched + " authors with hIndex + citationCount");
     }
 
+    /** Thủ công chạy sớm việc hết hạn các paper PENDING_REVIEW quá SLA (thay vì chờ scheduler). */
     @PostMapping("/papers/review/expire-stale")
     public HelixSyncResult expireStaleReviews() {
         paperReviewService.expireStalePendingReviews();

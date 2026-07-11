@@ -33,6 +33,11 @@ public class PersonalReportServiceImpl implements PersonalReportService {
     private final AuthorRepository authorRepository;
     private final JournalRepository journalRepository;
 
+    /**
+     * Tổng hợp báo cáo cá nhân hóa cho 1 user, gồm 3 phần: xu hướng (theo keyword/journal đang follow),
+     * gợi ý đọc tiếp (paper mới/liên quan chưa đọc), và toàn cảnh lĩnh vực (tác giả dẫn đầu, keyword liên quan,
+     * khoảng trống nghiên cứu). Nếu user chưa follow gì, tự động fallback dùng top keyword/author phổ biến.
+     */
     @Override
     @Transactional(readOnly = true)
     public PersonalReportResponse generatePersonalReport(Long userId) {
@@ -99,6 +104,7 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                 .build();
     }
 
+    /** Dựng phần "Xu hướng": line chart số paper/tháng theo keyword follow, bar chart top journal theo domain. */
     private TrendsSection buildTrendsSection(List<Long> keywordIds, Set<String> domains) {
         // Tính 3 tháng đã hoàn thành + tháng hiện tại đang cập nhật
         YearMonth lastCompleted = YearMonth.now().minusMonths(1);
@@ -139,6 +145,11 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                 .build();
     }
 
+    /**
+     * Dựng phần "Gợi ý đọc tiếp" (10-20 bài), gom theo thứ tự ưu tiên: bài mới từ author follow →
+     * bài trùng nhiều keyword follow nhất → bài được trích dẫn nhiều trong các keyword đó →
+     * nếu vẫn thiếu thì bù bằng bài phổ biến nhất hệ thống. Loại trừ paper đã bookmark.
+     */
     private List<RecommendedPaper> buildRecommendationsSection(
             List<Long> keywordIds, List<Long> authorIds, Set<Long> bookmarkedPaperIds) {
 
@@ -250,6 +261,10 @@ public class PersonalReportServiceImpl implements PersonalReportService {
         return finalRecommendations;
     }
 
+    /**
+     * Dựng phần "Toàn cảnh lĩnh vực": bubble chart tác giả dẫn đầu theo keyword follow,
+     * word cloud keyword hay xuất hiện cùng nhau, và các keyword đang có ít nghiên cứu (research gap).
+     */
     private LandscapeSection buildLandscapeSection(List<Long> keywordIds, Set<String> domains) {
         // Bubble Chart: Tác giả dẫn đầu
         List<AuthorInfluencePoint> bubbleChart = new ArrayList<>();
