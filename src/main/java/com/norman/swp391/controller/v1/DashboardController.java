@@ -18,6 +18,7 @@ public class DashboardController {
 
     private final DashboardService dashboardService;
 
+    /** Tổng hợp dữ liệu Dashboard; hiển thị thêm phần admin-only nếu user có role ADMIN/SUPER_ADMIN. */
     @GetMapping("/summary")
     public ApiResponse<DashboardSummaryResponse> getSummary(Authentication authentication) {
         boolean isAdmin = authentication != null && authentication.getAuthorities().stream()
@@ -25,6 +26,7 @@ public class DashboardController {
         return ApiResponse.ok(dashboardService.getDashboardSummary(isAdmin));
     }
 
+    /** Dữ liệu biểu đồ trend theo tháng của 1 keyword. */
     @GetMapping("/keyword-chart")
     public ApiResponse<KeywordChartResponse> getKeywordChart(@RequestParam Long keywordId) {
         return ApiResponse.ok(dashboardService.getKeywordChartData(keywordId));

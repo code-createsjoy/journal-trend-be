@@ -57,6 +57,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final PaperAuthorRepository paperAuthorRepository;
     private final EmailService emailService;
 
+    /** Danh sách thông báo của user hiện tại, mới nhất trước, có phân trang. */
     @Override
     @Transactional(readOnly = true)
     public PageResponse<NotificationResponse> listForCurrentUser(Pageable pageable) {
@@ -65,6 +66,7 @@ public class NotificationServiceImpl implements NotificationService {
         return PageResponse.from(page, NotificationMapper.toResponseList(page.getContent()));
     }
 
+    /** Đánh dấu đã đọc 1 thông báo (chỉ nếu thuộc về user hiện tại). */
     @Override
     @Transactional
     public void markAsRead(Long notificationId) {
@@ -77,6 +79,7 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.save(notification);
     }
 
+    /** Đánh dấu tất cả thông báo của user hiện tại là đã đọc. */
     @Override
     @Transactional
     public void markAllAsRead() {
@@ -87,6 +90,10 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.saveAll(page.getContent());
     }
 
+    /**
+     * Tạo thông báo "keyword đang trending" cho user đang follow keyword đó
+     * (chỉ nếu user bật notifyKeywords, và chưa từng được thông báo về keyword này trước đó).
+     */
     @Override
     @Transactional
     public void notifyTrendingForFollowedKeywords(List<Keyword> trendingKeywords) {
@@ -116,6 +123,12 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
+    /**
+     * Tạo thông báo (in-app + gom email digest) cho các paper mới vừa sync, dựa trên 3 kiểu follow:
+     * theo dõi Journal (khối A), theo dõi Keyword (khối B), theo dõi Author (khối C).
+     * Mỗi khối chỉ tạo notification in-app nếu user bật cờ tương ứng (notifyJournals/Keywords/Authors),
+     * nhưng vẫn gom vào email digest bất kể cờ đó (email có cờ riêng: notifyEmail, check ở bước 7).
+     */
     @Override
     @Transactional
     public void notifyNewPapersForSubscriptions(Set<Long> newPaperIds) {
@@ -301,6 +314,7 @@ public class NotificationServiceImpl implements NotificationService {
         });
     }
 
+    /** Xóa 1 thông báo (chỉ nếu thuộc về user hiện tại). */
     @Override
     @Transactional
     public void delete(Long notificationId) {
@@ -312,6 +326,7 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.delete(notification);
     }
 
+    /** Xóa nhiều thông báo cùng lúc theo danh sách id (chỉ của user hiện tại). */
     @Override
     @Transactional
     public void deleteMultiple(List<Long> notificationIds) {
@@ -322,6 +337,7 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.deleteByUserIdAndIds(userId, notificationIds);
     }
 
+    /** Xóa toàn bộ thông báo của user hiện tại. */
     @Override
     @Transactional
     public void deleteAll() {
@@ -329,6 +345,7 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.deleteByUserId(userId);
     }
 
+    /** Xóa các thông báo đã đọc của user hiện tại (giữ lại thông báo chưa đọc). */
     @Override
     @Transactional
     public void deleteAllRead() {
@@ -336,6 +353,7 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.deleteByUserIdAndReadStatus(userId, NotificationReadStatus.READ);
     }
 
+    /** Đánh dấu đã đọc nhiều thông báo cùng lúc theo danh sách id (chỉ của user hiện tại). */
     @Override
     @Transactional
     public void markMultipleAsRead(List<Long> notificationIds) {
@@ -351,6 +369,7 @@ public class NotificationServiceImpl implements NotificationService {
         notificationRepository.saveAll(toSave);
     }
 
+    /** Cắt ngắn text (VD title paper) nếu quá dài, thêm "…" ở cuối. */
     private static String truncate(String text, int max) {
         if (text == null) {
             return "";
@@ -358,6 +377,7 @@ public class NotificationServiceImpl implements NotificationService {
         return text.length() <= max ? text : text.substring(0, max - 1) + "…";
     }
 
+    /** Lấy userId của user đang đăng nhập, throw nếu chưa xác thực. */
     private Long requireUserId() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {

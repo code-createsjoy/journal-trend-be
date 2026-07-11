@@ -23,12 +23,14 @@ public class SearchHistoryController {
 
     private final SearchHistoryService searchHistoryService;
 
+    /** Ghi nhận 1 lượt tìm kiếm của user hiện tại. */
     @PostMapping
     public ApiResponse<Void> record(@Valid @RequestBody RecordSearchRequest request) {
         searchHistoryService.recordSearch(request.getQuery(), request.getSearchType());
         return ApiResponse.okMessage("Search recorded");
     }
 
+    /** Lấy tối đa 10 lượt tìm kiếm gần nhất của user hiện tại. */
     @GetMapping("/recent")
     public ApiResponse<List<SearchHistoryResponse>> recent() {
         return ApiResponse.ok(searchHistoryService.getRecentSearches());

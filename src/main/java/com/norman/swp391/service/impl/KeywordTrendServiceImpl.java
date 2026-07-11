@@ -43,6 +43,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
     private final PaperKeywordRepository paperKeywordRepository;
     private final AppProperties appProperties;
 
+    /** Tính lại publication_trends cho tháng trước và tháng hiện tại — chạy sau mỗi lần sync. */
     @Override
     @Transactional
     public void recalculateAll() {
@@ -50,6 +51,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         recalculateMonth(YearMonth.now());
     }
 
+    /** Tính lại publication_trends cho N tháng trước tới nay (tối đa 36 tháng) — dùng khi seed dữ liệu lịch sử. */
     @Override
     @Transactional
     public void backfillHistoricalMonths(int monthsBack) {
@@ -65,6 +67,11 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         }
     }
 
+    /**
+     * Tính TrendScore (BR-02) cho 1 tháng cụ thể của TẤT CẢ keyword: đếm số paper tháng này
+     * vs tháng trước, tính % thay đổi, lưu vào publication_trends. Nếu là tháng liền trước
+     * (tháng "chốt sổ" gần nhất), đồng thời cập nhật luôn trendScore/paperCount trên Keyword.
+     */
     private void recalculateMonth(YearMonth target) {
         int year = target.getYear();
         int month = target.getMonthValue();
@@ -133,6 +140,10 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         }
     }
 
+    /**
+     * Keyword được coi là "trending" (BR-04) khi TrendScore &ge; ngưỡng cấu hình
+     * trong N tháng liên tiếp gần nhất (mặc định 3 tháng, xem trending-consecutive-months).
+     */
     @Override
     @Transactional(readOnly = true)
     public List<Keyword> findTrendingKeywords(Integer year, Integer month) {
@@ -206,6 +217,10 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         return responses;
     }
 
+    /**
+     * Top N keyword theo trend score của tháng trước; nếu chưa có trend nào tính được
+     * (VD hệ thống mới), fallback xếp hạng theo tổng số paper.
+     */
     @Override
     @Transactional(readOnly = true)
     public List<TrendingKeywordResponse> findTopByTrendScore(int limit) {
@@ -236,6 +251,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         return responses;
     }
 
+    /** Lấy trend tháng hiện tại của 1 keyword; nếu chưa tính (chưa lưu) thì trả bản dựng tạm từ Keyword. */
     @Override
     @Transactional(readOnly = true)
     public PublicationTrend getCurrentMonthTrend(Long keywordId) {
@@ -253,6 +269,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
                         .build());
     }
 
+    /** Gom keyword đang trending theo domain (topic) — mỗi domain là 1 "trending topic", xếp theo số keyword trending. */
     @Override
     @Transactional(readOnly = true)
     public List<TrendingTopicResponse> findTrendingTopics() {
@@ -300,6 +317,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
     }
 
 
+    /** Chuyển kết quả query dạng Object[]{keywordId, count} thành Map để lookup nhanh. */
     private Map<Long, Integer> toCountMap(List<Object[]> rows) {
         Map<Long, Integer> map = new HashMap<>();
         for (Object[] row : rows) {
@@ -310,6 +328,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         return map;
     }
 
+    /** Công thức BR-02: TrendScore = (thángNay - thángTrước) / thángTrước × 100%. */
     private BigDecimal calculateTrendScore(int current, int previous) {
         if (previous == 0) {
             return current > 0 ? BigDecimal.valueOf(100).setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;

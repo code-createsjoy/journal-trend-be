@@ -129,12 +129,14 @@ public class AdminController {
         return ApiResponse.ok(paperReviewService.override(id, body));
     }
 
+    /** Tính lại publication_trends cho N tháng trước tới nay — dùng khi seed dữ liệu lịch sử. */
     @PostMapping("/trends/backfill")
     public ApiResponse<String> backfillTrends(@RequestParam(defaultValue = "12") int months) {
         keywordTrendService.backfillHistoricalMonths(months);
         return ApiResponse.ok("Backfilled keyword trends for last " + months + " months");
     }
 
+    /** Tính lại trend của tháng hiện tại ngay lập tức (không cần đợi cron). */
     @PostMapping("/trends/recalculate")
     public ApiResponse<String> recalculateTrends() {
         keywordTrendService.recalculateAll();

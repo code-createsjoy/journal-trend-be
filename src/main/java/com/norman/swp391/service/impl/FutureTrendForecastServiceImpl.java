@@ -46,6 +46,11 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     // PUBLIC API
     // ────────────────────────────────────────────────────────
 
+    /**
+     * Job chạy định kỳ (cron) để dự báo "hot topic" trong tương lai: tính slope/acceleration/volume
+     * cho từng keyword từ lịch sử trend, chuẩn hóa min-max, gộp thành điểm sTPS, dự báo số paper
+     * 6 tháng tới, rồi lưu top N keyword điểm cao nhất vào bảng future_trend_forecasts.
+     */
     @Override
     @Transactional
     public void runForecastJob() {
@@ -150,6 +155,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
         log.info("[ForecastJob] Completed: {} keywords forecasted", toSave.size());
     }
 
+    /** Lấy top N keyword có điểm dự báo (potentialScore) cao nhất — kết quả đã tính sẵn từ runForecastJob. */
     @Override
     @Transactional(readOnly = true)
     public List<ForecastListResponse> getTopForecasts(int limit) {
@@ -169,6 +175,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
             .toList();
     }
 
+    /** Chi tiết dự báo của 1 keyword: lịch sử 12 tháng gần nhất + các tháng dự báo tương lai. */
     @Override
     @Transactional(readOnly = true)
     public ForecastDetailResponse getForecastDetail(Long keywordId) {

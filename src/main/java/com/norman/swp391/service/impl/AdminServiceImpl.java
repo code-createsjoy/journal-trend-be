@@ -56,6 +56,9 @@ public class AdminServiceImpl implements AdminService {
 
     @Override
     @Transactional(readOnly = true)
+    /**
+     * Lấy lịch sử các lần đồng bộ (SyncLog), lọc theo trạng thái/khoảng thời gian.
+     */
     public PageResponse<SyncLogResponse> listSyncLogs(
             SyncStatus status, LocalDateTime from, LocalDateTime to, Pageable pageable) {
         Page<com.norman.swp391.entity.SyncLog> page = syncLogRepository.filter(status, from, to, pageable);

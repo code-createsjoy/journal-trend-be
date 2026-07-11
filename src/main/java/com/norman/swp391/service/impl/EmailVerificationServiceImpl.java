@@ -29,6 +29,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     private final EmailService emailService;
     private final AppProperties appProperties;
 
+    /** Tạo token xác thực email mới (UUID ngẫu nhiên) cho user, có thời hạn theo config. */
     @Override
     @Transactional
     public EmailVerificationToken createVerificationToken(User user) {
@@ -43,6 +44,10 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         return tokenRepository.save(verificationToken);
     }
 
+    /**
+     * Xác thực token do user click từ link trong email — kiểm tra token tồn tại,
+     * chưa dùng, chưa hết hạn, rồi kích hoạt tài khoản (enabled + verified = true).
+     */
     @Override
     @Transactional
     public String verifyToken(String token) {
@@ -68,6 +73,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         return user.getEmail();
     }
 
+    /** Vô hiệu hóa token cũ chưa dùng, tạo token mới và gửi lại email xác thực. */
     @Override
     @Transactional
     public void resendVerificationToken(String email) {
@@ -90,6 +96,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         emailService.sendVerificationEmail(user.getEmail(), user.getFullName(), newToken.getToken());
     }
 
+    /** Check email đã verified chưa — admin/super-admin luôn coi như đã verified. */
     @Override
     @Transactional(readOnly = true)
     public boolean isUserVerified(String email) {

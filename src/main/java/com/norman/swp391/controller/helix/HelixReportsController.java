@@ -28,6 +28,7 @@ public class HelixReportsController {
     private final ReportExportService reportExportService;
     private final PersonalReportService personalReportService;
 
+    /** Báo cáo cá nhân hóa của user hiện tại (xu hướng, gợi ý đọc, toàn cảnh lĩnh vực). */
     @GetMapping("/personal")
     public PersonalReportResponse getPersonalReport() {
         Long userId = com.norman.swp391.security.SecurityUtils.getCurrentUserId();
@@ -45,6 +46,7 @@ public class HelixReportsController {
         return csvResponse("topic-trends.csv", reportExportService.exportTopicTrendsCsv());
     }
 
+    /** Xuất CSV danh sách paper ACTIVE theo citation giảm dần. */
     @GetMapping(value = "/papers.csv", produces = "text/csv")
     public ResponseEntity<String> exportPapers(@RequestParam(defaultValue = "500") int limit) {
         return csvResponse("papers.csv", reportExportService.exportPapersCsv(limit));

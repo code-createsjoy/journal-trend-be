@@ -42,6 +42,11 @@ public class DashboardServiceImpl implements DashboardService {
     private final SyncLogRepository syncLogRepository;
     private final KeywordTrendService keywordTrendService;
 
+    /**
+     * Tổng hợp toàn bộ dữ liệu cho trang Dashboard: KPI tổng quan, top trending topics/keywords,
+     * bài báo mới nhất, top journal theo số paper, và (nếu là admin) tình trạng lần sync gần nhất.
+     * Kết quả được cache theo `isAdmin` (2 phiên bản: user thường / admin) để tránh tính lại mỗi request.
+     */
     @Override
     @Cacheable(value = "dashboardSummary", key = "#isAdmin")
     @Transactional(readOnly = true)
@@ -201,6 +206,9 @@ public class DashboardServiceImpl implements DashboardService {
                 .build();
     }
 
+    /**
+     * Lấy dữ liệu biểu đồ trend theo tháng của 1 keyword cụ thể (để vẽ chart chi tiết).
+     */
     @Override
     @Transactional(readOnly = true)
     public KeywordChartResponse getKeywordChartData(Long keywordId) {

@@ -62,12 +62,17 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
     private final java.util.concurrent.ConcurrentHashMap<Long, Object> citationRefreshLocks =
             new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Tạo transaction template chạy độc lập (REQUIRES_NEW) — dùng khi cần commit riêng, không phụ thuộc transaction cha. */
     private TransactionTemplate getRequiresNewTemplate() {
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         return template;
     }
 
+    /**
+     * Lấy danh sách paper mà paper này TRÍCH DẪN (references) — lazy-fetch từ OpenAlex lần đầu
+     * nếu chưa có cache, sau đó luôn đọc từ DB (reference_metadata lưu vĩnh viễn, không TTL).
+     */
     @Override
     public List<HelixReferenceNode> getReferences(Long paperId, int limit) {
         Paper paper = paperRepository.findById(paperId)
@@ -223,6 +228,7 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
         return result;
     }
 
+    /** Gộp cả references (bài được trích dẫn) và citations (bài trích dẫn ngược lại) của 1 paper vào 1 response. */
     @Override
     public HelixPaperGraph getPaperGraph(Long paperId, int refLimit, int citLimit, String sort, Integer yearFrom, Integer yearTo) {
         List<HelixReferenceNode> references = getReferences(paperId, refLimit);
@@ -288,6 +294,10 @@ public class PaperReferenceServiceImpl implements PaperReferenceService {
         }
     }
 
+    /**
+     * Lấy danh sách paper TRÍCH DẪN NGƯỢC LẠI paper này (citations) — cache 7 ngày (TTL),
+     * refresh có khóa theo paperId để tránh race condition khi nhiều request cùng lúc.
+     */
     @Override
     public List<HelixCitationNode> getCitations(Long paperId, String sort, Integer yearFrom, Integer yearTo, int limit) {
         Paper paper = paperRepository.findById(paperId)

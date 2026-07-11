@@ -29,6 +29,10 @@ public class TrendDemoStatsServiceImpl implements TrendDemoStatsService {
     private final PublicationTrendRepository publicationTrendRepository;
     private final KeywordRepository keywordRepository;
 
+    /**
+     * Thống kê "demo" cho admin xem trực quan cách tính trending hoạt động: số paper/keyword
+     * thỏa từng điều kiện (đủ min paper, đủ ngưỡng %, đủ số tháng liên tiếp), kèm công thức tính.
+     */
     @Override
     @Transactional(readOnly = true)
     public TrendDemoStatsResponse getStats() {
@@ -78,6 +82,7 @@ public class TrendDemoStatsServiceImpl implements TrendDemoStatsService {
                 .build();
     }
 
+    /** Lấy top N keyword theo tổng số paper, kèm trend score tháng hiện tại của từng keyword. */
     private List<KeywordMonthSample> loadTopKeywordsByPaperCount(int limit, YearMonth now) {
         return paperKeywordRepository.findTopKeywordsByPaperCount(
                         PaperStatus.ACTIVE, PaperReviewStatus.NONE, PageRequest.of(0, limit))
@@ -99,6 +104,7 @@ public class TrendDemoStatsServiceImpl implements TrendDemoStatsService {
                 .toList();
     }
 
+    /** Đếm số keyword thỏa ĐỦ 2 điều kiện "trending chính thức" (BR-04): đủ số paper tối thiểu + trending liên tiếp N tháng. */
     private long countOfficialTrendingKeywords(
             int minPapers, int threshold, int consecutive, YearMonth end) {
         BigDecimal thr = BigDecimal.valueOf(threshold);
@@ -109,6 +115,7 @@ public class TrendDemoStatsServiceImpl implements TrendDemoStatsService {
                 .count();
     }
 
+    /** Check 1 keyword có đạt trend score &ge; ngưỡng liên tục trong đúng N tháng gần nhất không. */
     private boolean isConsecutiveTrending(
             Long keywordId, YearMonth endMonth, int monthsRequired, BigDecimal threshold) {
         YearMonth cursor = endMonth.minusMonths(monthsRequired - 1L);

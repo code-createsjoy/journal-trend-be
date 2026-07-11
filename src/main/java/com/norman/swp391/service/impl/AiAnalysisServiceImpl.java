@@ -39,6 +39,11 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
     @Qualifier("groqRestClient")
     private final RestClient groqRestClient;
 
+    /**
+     * Phân tích xu hướng của 1 keyword cụ thể bằng AI (Groq) — trả về nhận định
+     * tăng/ổn định/giảm, điểm khả thi (feasibilityScore) và gợi ý cho nhà nghiên
+     * cứu.
+     */
     @Override
     public AiTrendAnalysisResponse analyzeTrend(AiTrendAnalysisRequest request) {
         String apiKey = appProperties.getGroq().getApiKey();
@@ -47,8 +52,8 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         }
 
         KeywordResponse keyword = keywordService.getById(request.getKeywordId());
-        List<KeywordTrendResponse> trendData =
-                keywordService.getKeywordTrendChart(request.getKeywordId(), request.getMonths());
+        List<KeywordTrendResponse> trendData = keywordService.getKeywordTrendChart(request.getKeywordId(),
+                request.getMonths());
 
         if (trendData.isEmpty()) {
             throw new BadRequestException("No trend data available for keyword: " + keyword.getTerm());
@@ -60,6 +65,11 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         return parseAiResponse(aiResponseText, keyword.getTerm());
     }
 
+    /**
+     * Ghép dữ liệu trend của 1 keyword thành prompt gửi cho AI —
+     * yêu cầu AI trả lời đúng theo JSON schema đã định sẵn
+     * (verdict/feasibilityScore/...).
+     */
     private String buildPrompt(String term, List<KeywordTrendResponse> data) {
         StringBuilder sb = new StringBuilder();
         sb.append("You are an expert analyst specializing in academic research trends. ");
@@ -75,28 +85,36 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             sb.append("\n");
         }
 
-        sb.append("""
+        sb.append(
+                """
 
-                Analyze the data and respond EXACTLY in the following JSON format (no markdown, no text outside the JSON):
-                {
-                  "verdict": "GROWING or STABLE or DECLINING",
-                  "feasibilityScore": <integer 0-100>,
-                  "analysis": "<detailed overall analysis, written in English>",
-                  "keyInsights": ["<insight 1, written in English>", "<insight 2, written in English>", "<insight 3, written in English>"],
-                  "recommendation": "<recommendation for the researcher, written in English>"
-                }
+                        Analyze the data and respond EXACTLY in the following JSON format (no markdown, no text outside the JSON):
+                        {
+                          "verdict": "GROWING or STABLE or DECLINING",
+                          "feasibilityScore": <integer 0-100>,
+                          "analysis": "<detailed overall analysis, written in English>",
+                          "keyInsights": ["<insight 1, written in English>", "<insight 2, written in English>", "<insight 3, written in English>"],
+                          "recommendation": "<recommendation for the researcher, written in English>"
+                        }
 
-                feasibilityScore guide:
-                - 80-100: Booming field, highly feasible for research
-                - 60-79: Growing well, feasible
-                - 40-59: Stable, needs careful consideration
-                - 20-39: Declining trend, less feasible
-                - 0-19: Field is declining sharply
-                """);
+                        feasibilityScore guide:
+                        - 80-100: Booming field, highly feasible for research
+                        - 60-79: Growing well, feasible
+                        - 40-59: Stable, needs careful consideration
+                        - 20-39: Declining trend, less feasible
+                        - 0-19: Field is declining sharply
+                        """);
 
         return sb.toString();
     }
 
+    /**
+     * Gọi Groq chat-completion API với prompt đã build, trả về chuỗi nội dung
+     * (JSON thô) mà AI trả lời. Dùng chung cho cả 2 luồng phân tích (1 keyword và
+     * nhiều keyword).
+     * Bắt riêng lỗi 429 (hết quota Groq) để báo message thân thiện thay vì lỗi 500
+     * chung chung.
+     */
     private String callGroq(String prompt) {
         AppProperties.Groq cfg = appProperties.getGroq();
         String url = cfg.getBaseUrl() + "/chat/completions";
@@ -123,13 +141,19 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         } catch (HttpClientErrorException.TooManyRequests e) {
             log.error("Groq API quota exceeded: {}", e.getMessage());
             throw new AiQuotaExhaustedException(
-                    "Hệ thống AI đang tạm hết hạn mức sử dụng, vui lòng thử lại sau ít phút.", e);
+                    "The AI system has temporarily reached its usage quota, please try again in a few minutes.", e);
         } catch (Exception e) {
             log.error("Groq API call failed: {}", e.getMessage());
             throw new RuntimeException("AI analysis failed: " + e.getMessage(), e);
         }
     }
 
+    /**
+     * So sánh xu hướng của NHIỀU keyword cùng lúc bằng AI — nếu request không chỉ
+     * định
+     * keywordIds cụ thể thì tự lấy top 10 keyword đang trending để phân tích.
+     * Trả về keyword nào đang tăng mạnh nhất, đáng theo đuổi nhất trong nhóm.
+     */
     @Override
     public AiTopTrendsAnalysisResponse analyzeTopTrends(AiTopTrendsAnalysisRequest request) {
         String apiKey = appProperties.getGroq().getApiKey();
@@ -168,6 +192,11 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         return parseTopTrendsAiResponse(aiResponseText, new ArrayList<>(combinedData.keySet()));
     }
 
+    /**
+     * Ghép dữ liệu trend của NHIỀU keyword thành 1 prompt duy nhất, yêu cầu AI
+     * so sánh chéo giữa chúng và chỉ ra keyword nào đang tăng mạnh nhất
+     * (topGrowingKeywords).
+     */
     private String buildTopTrendsPrompt(Map<String, List<KeywordTrendResponse>> combinedData) {
         StringBuilder sb = new StringBuilder();
         sb.append("You are a leading expert in scientific research data analysis. ");
@@ -186,25 +215,32 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             }
         });
 
-        sb.append("""
+        sb.append(
+                """
 
-                Perform a comparative analysis and respond EXACTLY in the following JSON format (no markdown, no text outside the JSON):
-                {
-                  "overallVerdict": "GROWING or STABLE or MIXED",
-                  "topGrowingKeywords": ["<keyword 1 growing fastest>", "<keyword 2 growing fastest>"],
-                  "analysis": "<detailed comparative analysis of the trend lines, indicating which keywords are accelerating and which are saturating, written in English>",
-                  "keyInsights": [
-                    "<key insight 1, written in English>",
-                    "<key insight 2, written in English>",
-                    "<key insight 3, written in English>"
-                  ],
-                  "recommendation": "<advise the researcher which keyword to pick for a new research direction with the highest chance of riding the trend, written in English>"
-                }
-                """);
+                        Perform a comparative analysis and respond EXACTLY in the following JSON format (no markdown, no text outside the JSON):
+                        {
+                          "overallVerdict": "GROWING or STABLE or MIXED",
+                          "topGrowingKeywords": ["<keyword 1 growing fastest>", "<keyword 2 growing fastest>"],
+                          "analysis": "<detailed comparative analysis of the trend lines, indicating which keywords are accelerating and which are saturating, written in English>",
+                          "keyInsights": [
+                            "<key insight 1, written in English>",
+                            "<key insight 2, written in English>",
+                            "<key insight 3, written in English>"
+                          ],
+                          "recommendation": "<advise the researcher which keyword to pick for a new research direction with the highest chance of riding the trend, written in English>"
+                        }
+                        """);
 
         return sb.toString();
     }
 
+    /**
+     * Parse chuỗi JSON mà AI trả về (cho luồng so sánh nhiều keyword) thành DTO.
+     * Nếu JSON không hợp lệ/parse lỗi → không throw exception, mà trả về 1 response
+     * "an toàn" (verdict mặc định MIXED, analysis = JSON thô) để user vẫn xem được
+     * nội dung.
+     */
     private AiTopTrendsAnalysisResponse parseTopTrendsAiResponse(String json, List<String> analyzedKeywords) {
         try {
             JsonNode node = objectMapper.readTree(json);
@@ -240,11 +276,17 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                     .topGrowingKeywords(List.of())
                     .analysis(json)
                     .keyInsights(List.of())
-                    .recommendation("Không thể giải mã dữ liệu AI, vui lòng tham khảo nội dung phân tích thô.")
+                    .recommendation("Unable to parse the AI response, please refer to the raw analysis content.")
                     .build();
         }
     }
 
+    /**
+     * Parse chuỗi JSON mà AI trả về (cho luồng phân tích 1 keyword) thành DTO.
+     * Nếu JSON không hợp lệ/parse lỗi → không throw exception, mà trả về 1 response
+     * "an toàn" (verdict mặc định STABLE, feasibilityScore = 50, analysis = JSON
+     * thô).
+     */
     private AiTrendAnalysisResponse parseAiResponse(String json, String keyword) {
         try {
             JsonNode node = objectMapper.readTree(json);
@@ -274,7 +316,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                     .feasibilityScore(50)
                     .analysis(json)
                     .keyInsights(List.of())
-                    .recommendation("Không thể phân tích tự động, vui lòng xem phần analysis.")
+                    .recommendation("Automatic analysis failed, please see the analysis section.")
                     .build();
         }
     }

@@ -11,6 +11,7 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class KeywordMapper {
 
+    /** Map Keyword entity sang DTO cơ bản. */
     public static KeywordResponse toResponse(Keyword keyword) {
         if (keyword == null) {
             return null;
@@ -25,6 +26,7 @@ public class KeywordMapper {
                 .build();
     }
 
+    /** Map danh sách Keyword sang danh sách DTO. */
     public static List<KeywordResponse> toResponseList(List<Keyword> keywords) {
         if (keywords == null) {
             return List.of();
@@ -32,6 +34,7 @@ public class KeywordMapper {
         return keywords.stream().map(KeywordMapper::toResponse).toList();
     }
 
+    /** Map 1 điểm dữ liệu PublicationTrend (1 tháng) sang DTO cho biểu đồ. */
     public static KeywordTrendResponse toTrendResponse(PublicationTrend trend) {
         if (trend == null) {
             return null;
@@ -48,6 +51,7 @@ public class KeywordMapper {
                 .build();
     }
 
+    /** Map danh sách PublicationTrend sang danh sách điểm dữ liệu cho biểu đồ. */
     public static List<KeywordTrendResponse> toTrendResponseList(List<PublicationTrend> trends) {
         if (trends == null) {
             return List.of();
@@ -55,6 +59,7 @@ public class KeywordMapper {
         return trends.stream().map(KeywordMapper::toTrendResponse).toList();
     }
 
+    /** Map Keyword (kèm trend của 1 tháng cụ thể nếu có) sang DTO xếp hạng trending, gắn rank truyền vào. */
     public static TrendingKeywordResponse toTrendingResponse(Keyword keyword, PublicationTrend trend, int rank) {
         if (keyword == null) {
             return null;

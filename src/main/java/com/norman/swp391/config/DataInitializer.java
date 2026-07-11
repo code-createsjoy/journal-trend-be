@@ -194,6 +194,9 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
+    /**
+     * Chuẩn hóa tên journal (trim + lowercase) để dùng làm key cache khi backfill.
+     */
     private static String normalizeJournalKey(String name) {
         return name.trim().toLowerCase(Locale.ROOT);
     }

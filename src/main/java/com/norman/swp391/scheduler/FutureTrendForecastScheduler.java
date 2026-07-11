@@ -20,6 +20,9 @@ public class FutureTrendForecastScheduler {
     private final AppProperties appProperties;
 
     @Scheduled(cron = "${app.sync.forecast-cron:0 0 4 1 * *}")
+    /**
+     * Chạy hằng tháng (mặc định 4h sáng ngày mùng 1) để dự báo hot topic sắp tới.
+     */
     public void runMonthlyForecast() {
         if (!appProperties.isSchedulerEnabled()) {
             log.debug("[ForecastScheduler] Scheduler disabled, bỏ qua");

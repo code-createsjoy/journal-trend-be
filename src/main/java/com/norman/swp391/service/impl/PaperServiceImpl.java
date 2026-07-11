@@ -88,18 +88,21 @@ public class PaperServiceImpl implements PaperService {
         return PageResponse.from(page, content);
     }
 
+    /** Bulk-load author của nhiều paper cùng lúc, gom theo paperId (tránh N+1 query). */
     private Map<Long, List<PaperAuthor>> loadAuthorsForPapers(List<Long> paperIds) {
         if (paperIds.isEmpty()) return Collections.emptyMap();
         return paperAuthorRepository.findByPaperIdInWithAuthor(paperIds).stream()
                 .collect(Collectors.groupingBy(pa -> pa.getPaper().getId()));
     }
 
+    /** Bulk-load keyword của nhiều paper cùng lúc, gom theo paperId (tránh N+1 query). */
     private Map<Long, List<PaperKeyword>> loadKeywordsForPapers(List<Long> paperIds) {
         if (paperIds.isEmpty()) return Collections.emptyMap();
         return paperKeywordRepository.findByPaperIdInWithKeyword(paperIds).stream()
                 .collect(Collectors.groupingBy(pk -> pk.getPaper().getId()));
     }
 
+    /** Tìm paper theo domain của keyword gắn với nó (VD tất cả paper thuộc "Computer Science"). */
     @Override
     @Transactional(readOnly = true)
     public java.util.List<PaperResponse> searchByDomain(String domain) {
@@ -123,6 +126,7 @@ public class PaperServiceImpl implements PaperService {
                 paperAuthorRepository.findByPaperId(id));
     }
 
+    /** Lấy nhiều paper theo danh sách id cùng lúc (chỉ paper ACTIVE + đã qua review), kèm author/keyword. */
     @Override
     @Transactional(readOnly = true)
     public List<PaperDetailResponse> getByIds(List<Long> ids) {
@@ -146,6 +150,7 @@ public class PaperServiceImpl implements PaperService {
         ).collect(Collectors.toList());
     }
 
+    /** Danh sách các năm xuất bản đang có trong hệ thống (để đổ vào dropdown filter năm ở FE). */
     @Override
     @Transactional(readOnly = true)
     public List<Integer> getAvailableYears() {

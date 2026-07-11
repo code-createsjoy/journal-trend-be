@@ -28,6 +28,7 @@ public class FollowKeywordServiceImpl implements FollowKeywordService {
     private final UserRepository userRepository;
     private final AppProperties appProperties;
 
+    /** Follow 1 keyword — kiểm tra chưa follow trùng và chưa vượt giới hạn số keyword được follow. */
     @Override
     @Transactional
     public void follow(Long keywordId) {
@@ -50,6 +51,7 @@ public class FollowKeywordServiceImpl implements FollowKeywordService {
                 .build());
     }
 
+    /** Unfollow 1 keyword (không lỗi nếu vốn dĩ chưa follow). */
     @Override
     @Transactional
     public void unfollow(Long keywordId) {
@@ -58,6 +60,7 @@ public class FollowKeywordServiceImpl implements FollowKeywordService {
                 .ifPresent(followKeywordRepository::delete);
     }
 
+    /** Danh sách keyword mà user hiện tại đang follow. */
     @Override
     @Transactional(readOnly = true)
     public List<KeywordResponse> listFollowed() {
@@ -68,6 +71,7 @@ public class FollowKeywordServiceImpl implements FollowKeywordService {
                 .toList();
     }
 
+    /** Lấy userId của user đang đăng nhập, throw nếu chưa xác thực. */
     private Long requireUserId() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {

@@ -134,7 +134,16 @@ app:
       - Generative AI
       - Large Language Models
       - Robotics
-      - Data Science              
+      - Data Science
+      - natural language processing
+      - software engineering
+      - database systems
+      - data mining
+      - cybersecurity
+      - computational mathematics
+      - information retrieval
+      - autonomous robots
+      - reinforcement learning
 
   scheduler-enabled: ${SCHEDULER_ENABLED:true}
 

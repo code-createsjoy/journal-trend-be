@@ -34,6 +34,11 @@ public class PaperReviewServiceImpl implements PaperReviewService {
     private final PaperReviewAuditRepository paperReviewAuditRepository;
     private final UserRepository userRepository;
 
+    /**
+     * Áp dụng metadata mới từ nguồn ngoài (VD lần sync sau) vào paper đã tồn tại.
+     * Nếu title xung đột đáng kể với bản hiện tại → đánh dấu PENDING_REVIEW để admin duyệt tay
+     * thay vì tự động ghi đè; field nào đang trống thì vẫn tự điền (enrichEmptyFieldsOnly).
+     */
     @Override
     @Transactional
     public void applyIncomingMetadata(Paper paper, ExternalPaperMetadata incoming, String source) {
@@ -59,6 +64,7 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         paperRepository.save(paper);
     }
 
+    /** Danh sách paper theo trạng thái review (VD PENDING_REVIEW), có thể lọc theo khoảng thời gian bị flag. */
     @Override
     @Transactional(readOnly = true)
     public PageResponse<PaperReviewResponse> listByReviewStatus(
@@ -72,6 +78,7 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         return PageResponse.from(page, page.getContent().stream().map(this::toResponse).toList());
     }
 
+    /** Admin chấp nhận giữ nguyên dữ liệu hiện tại của paper (bỏ qua conflict), gỡ khỏi hàng chờ review. */
     @Override
     @Transactional
     public PaperReviewResponse accept(Long paperId, String note) {
@@ -85,6 +92,7 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         return toResponse(paper);
     }
 
+    /** Admin ghi đè title/abstract bằng giá trị tự nhập (hoặc dùng bản conflict từ nguồn ngoài), rồi gỡ khỏi hàng chờ review. */
     @Override
     @Transactional
     public PaperReviewResponse override(Long paperId, PaperReviewOverrideRequest request) {
@@ -110,6 +118,7 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         return toResponse(paper);
     }
 
+    /** Tự động chuyển paper PENDING_REVIEW quá hạn SLA (BR-97) sang EXPIRED — chạy sau mỗi lần sync. */
     @Override
     @Transactional
     public void expireStalePendingReviews() {
@@ -123,12 +132,14 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         }
     }
 
+    /** Đếm số paper theo trạng thái review — dùng cho badge/thống kê admin. */
     @Override
     @Transactional(readOnly = true)
     public long countByReviewStatus(PaperReviewStatus status) {
         return paperRepository.countByReviewStatus(status);
     }
 
+    /** Lấy paper theo id, throw nếu không tồn tại hoặc không ở trạng thái PENDING_REVIEW. */
     private Paper getPendingPaper(Long paperId) {
         Paper paper = paperRepository
                 .findById(paperId)
@@ -139,6 +150,7 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         return paper;
     }
 
+    /** Ghi log audit (ai, hành động gì, khi nào) mỗi khi có quyết định review trên 1 paper. */
     private void audit(Paper paper, PaperReviewAction action, String note) {
         Long adminId = SecurityUtils.getCurrentUserId();
         User admin = adminId != null ? userRepository.findById(adminId).orElse(null) : null;
@@ -151,6 +163,7 @@ public class PaperReviewServiceImpl implements PaperReviewService {
                 .build());
     }
 
+    /** Chỉ điền field còn TRỐNG của paper bằng dữ liệu mới — không ghi đè field đã có giá trị. */
     private void enrichEmptyFieldsOnly(Paper paper, ExternalPaperMetadata incoming) {
         if (!StringUtils.hasText(paper.getAbstractText()) && StringUtils.hasText(incoming.abstractText())) {
             paper.setAbstractText(incoming.abstractText());
@@ -166,12 +179,14 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         }
     }
 
+    /** Cắt ngắn chuỗi nếu vượt maxLength, thêm "..." ở cuối. */
     private String truncateText(String text, int maxLength) {
         if (text == null) return null;
         if (text.length() <= maxLength) return text;
         return text.substring(0, maxLength - 3) + "...";
     }
 
+    /** Check title mới có khác biệt đáng kể so với title hiện tại không (không tính khác biệt nhỏ/gần giống). */
     private boolean hasMetadataConflict(Paper paper, ExternalPaperMetadata incoming) {
         if (StringUtils.hasText(paper.getTitle()) && StringUtils.hasText(incoming.title())) {
             String existing = paper.getTitle().trim().toLowerCase();
@@ -183,6 +198,7 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         return false;
     }
 
+    /** 2 title coi là "giống nhau" nếu chứa nhau, hoặc độ lệch Levenshtein &lt; 25% độ dài. */
     private boolean isSimilarTitle(String a, String b) {
         if (a.contains(b) || b.contains(a)) {
             return true;
@@ -195,6 +211,7 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         return ((double) distance / maxLen) < 0.25;
     }
 
+    /** Khoảng cách chỉnh sửa Levenshtein giữa 2 chuỗi (số ký tự cần thêm/xóa/sửa để biến a thành b). */
     private int levenshtein(String a, String b) {
         int[][] dp = new int[a.length() + 1][b.length() + 1];
         for (int i = 0; i <= a.length(); i++) {
@@ -212,6 +229,7 @@ public class PaperReviewServiceImpl implements PaperReviewService {
         return dp[a.length()][b.length()];
     }
 
+    /** Map Paper entity sang DTO PaperReviewResponse cho màn hình review của admin. */
     private PaperReviewResponse toResponse(Paper paper) {
         return PaperReviewResponse.builder()
                 .id(paper.getId())
