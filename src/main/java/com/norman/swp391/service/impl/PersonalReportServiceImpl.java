@@ -14,6 +14,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -35,26 +36,31 @@ public class PersonalReportServiceImpl implements PersonalReportService {
 
     @Override
     @Transactional(readOnly = true)
-    public PersonalReportResponse generatePersonalReport(Long userId) {
-        // 1. Lấy bộ lọc từ các mục người dùng đang follow
+    public PersonalReportResponse generatePersonalReport(Long userId, String filterBy) {
         List<FollowKeyword> followKeywords = followKeywordRepository.findByUserId(userId);
         List<FollowAuthor> followAuthors = followAuthorRepository.findByUserId(userId);
         List<FollowJournal> followJournals = followJournalRepository.findByUserId(userId);
 
-        List<Long> keywordIds = new ArrayList<>();
+        // IDs thực tế user đang follow (không fallback) — dùng cho filter tabs
+        List<Long> followedKeywordIds = new ArrayList<>();
         Set<String> domains = new HashSet<>();
         for (FollowKeyword fk : followKeywords) {
-            keywordIds.add(fk.getKeyword().getKeywordId());
+            followedKeywordIds.add(fk.getKeyword().getKeywordId());
             if (fk.getKeyword().getDomain() != null) {
                 domains.add(fk.getKeyword().getDomain().toLowerCase());
             }
         }
-
-        List<Long> authorIds = followAuthors.stream()
+        List<Long> followedAuthorIds = followAuthors.stream()
                 .map(fa -> fa.getAuthor().getId())
                 .collect(Collectors.toList());
+        List<Long> followedJournalIds = followJournals.stream()
+                .map(fj -> fj.getJournal().getId())
+                .collect(Collectors.toList());
 
-        // Cơ chế Fallback: Nếu người dùng chưa follow từ khóa nào, lấy Top 5 từ khóa phổ biến trong hệ thống
+        // IDs có fallback — dùng cho tab ALL và trends/landscape
+        List<Long> keywordIds = new ArrayList<>(followedKeywordIds);
+        List<Long> authorIds = new ArrayList<>(followedAuthorIds);
+
         if (keywordIds.isEmpty()) {
             List<Object[]> topKeywords = paperKeywordRepository.findTopKeywordsByPaperCount(
                     PaperStatus.ACTIVE, PaperReviewStatus.NONE, PageRequest.of(0, 5));
@@ -68,7 +74,6 @@ public class PersonalReportServiceImpl implements PersonalReportService {
             }
         }
 
-        // Cơ chế Fallback cho Tác giả: Nếu chưa follow ai, lấy Top 5 tác giả nổi bật
         if (authorIds.isEmpty()) {
             authorIds = authorRepository.findFeatured(PageRequest.of(0, 5))
                     .getContent().stream()
@@ -80,22 +85,26 @@ public class PersonalReportServiceImpl implements PersonalReportService {
             domains.add("general");
         }
 
-        // Đọc danh sách ID bài báo người dùng đã lưu để loại trừ khỏi gợi ý
         Set<Long> bookmarkedPaperIds = new HashSet<>(collectionPaperRepository.findPaperIdsByUserId(userId));
 
-        // 2. Xây dựng NHIỆM VỤ 1: XU HƯỚNG
         TrendsSection trends = buildTrendsSection(keywordIds, domains);
-
-        // 3. Xây dựng NHIỆM VỤ 2: GỢI Ý ĐỌC TIẾP (Tối thiểu 10 bài, tối đa 20 bài)
-        List<RecommendedPaper> recommendations = buildRecommendationsSection(keywordIds, authorIds, bookmarkedPaperIds);
-
-        // 4. Xây dựng NHIỆM VỤ 3: TOÀN CẢNH LĨNH VỰC
+        List<RecommendedPaper> recommendations = buildRecommendationsSection(
+                filterBy, keywordIds, authorIds,
+                followedKeywordIds, followedAuthorIds, followedJournalIds,
+                bookmarkedPaperIds);
         LandscapeSection landscape = buildLandscapeSection(keywordIds, domains);
+
+        PersonalReportResponse.FollowStats followStats = PersonalReportResponse.FollowStats.builder()
+                .keywordCount(followedKeywordIds.size())
+                .authorCount(followedAuthorIds.size())
+                .journalCount(followedJournalIds.size())
+                .build();
 
         return PersonalReportResponse.builder()
                 .trends(trends)
                 .recommendations(recommendations)
                 .landscape(landscape)
+                .followStats(followStats)
                 .build();
     }
 
@@ -140,114 +149,194 @@ public class PersonalReportServiceImpl implements PersonalReportService {
     }
 
     private List<RecommendedPaper> buildRecommendationsSection(
+            String filterBy,
+            List<Long> keywordIds, List<Long> authorIds,
+            List<Long> followedKeywordIds, List<Long> followedAuthorIds, List<Long> followedJournalIds,
+            Set<Long> bookmarkedPaperIds) {
+
+        List<RecommendedPaper> result = switch (filterBy.toUpperCase()) {
+            case "KEYWORD" -> buildKeywordFilterRecommendations(followedKeywordIds, bookmarkedPaperIds);
+            case "AUTHOR"  -> buildAuthorFilterRecommendations(followedAuthorIds, bookmarkedPaperIds);
+            case "JOURNAL" -> buildJournalFilterRecommendations(followedJournalIds, bookmarkedPaperIds);
+            default        -> buildAllRecommendations(keywordIds, authorIds, bookmarkedPaperIds);
+        };
+
+        enrichWithAuthors(result);
+        return result;
+    }
+
+    private List<RecommendedPaper> buildKeywordFilterRecommendations(
+            List<Long> followedKeywordIds, Set<Long> bookmarkedPaperIds) {
+        if (followedKeywordIds.isEmpty()) return new ArrayList<>();
+
+        List<Object[]> rows = paperRepository.findByTrendingKeywordIdsWithOverlap(
+                followedKeywordIds, PageRequest.of(0, 20));
+        List<RecommendedPaper> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            Paper p = (Paper) row[0];
+            Long matchCount = (Long) row[1];
+            if (bookmarkedPaperIds.contains(p.getId())) continue;
+            result.add(toRecommendedPaper(p, "TRENDING_KEYWORD",
+                    "Trùng khớp " + matchCount + " keyword đang trending"));
+            if (result.size() >= 20) break;
+        }
+        return result;
+    }
+
+    private List<RecommendedPaper> buildAuthorFilterRecommendations(
+            List<Long> followedAuthorIds, Set<Long> bookmarkedPaperIds) {
+        if (followedAuthorIds.isEmpty()) return new ArrayList<>();
+
+        List<Paper> papers = paperRepository.findLatestByAuthorIds(followedAuthorIds, PageRequest.of(0, 60));
+        List<Long> paperIds = papers.stream().map(Paper::getId).collect(Collectors.toList());
+
+        // Load PaperAuthor để biết bài nào thuộc author nào (tránh N+1)
+        List<PaperAuthor> paLinks = paperAuthorRepository.findByPaperIdInWithAuthor(paperIds);
+        Map<Long, Set<Long>> paperToFollowedAuthors = new HashMap<>();
+        for (PaperAuthor pa : paLinks) {
+            Long authorId = pa.getAuthor().getId();
+            if (followedAuthorIds.contains(authorId)) {
+                paperToFollowedAuthors
+                        .computeIfAbsent(pa.getPaper().getId(), k -> new HashSet<>())
+                        .add(authorId);
+            }
+        }
+
+        Map<Long, Integer> authorPaperCount = new HashMap<>();
+        List<RecommendedPaper> result = new ArrayList<>();
+        for (Paper p : papers) {
+            if (bookmarkedPaperIds.contains(p.getId())) continue;
+            Set<Long> authorsOfPaper = paperToFollowedAuthors.getOrDefault(p.getId(), Set.of());
+            boolean canInclude = authorsOfPaper.stream()
+                    .anyMatch(aId -> authorPaperCount.getOrDefault(aId, 0) < 3);
+            if (!canInclude) continue;
+            authorsOfPaper.forEach(aId -> authorPaperCount.merge(aId, 1, Integer::sum));
+            result.add(toRecommendedPaper(p, "FOLLOWED_AUTHOR",
+                    "Bài viết mới nhất từ tác giả bạn đang theo dõi"));
+            if (result.size() >= 20) break;
+        }
+        return result;
+    }
+
+    private List<RecommendedPaper> buildJournalFilterRecommendations(
+            List<Long> followedJournalIds, Set<Long> bookmarkedPaperIds) {
+        if (followedJournalIds.isEmpty()) return new ArrayList<>();
+
+        List<Paper> papers = paperRepository.findByFollowedJournalIdsTrending(
+                followedJournalIds, PageRequest.of(0, 20));
+        List<RecommendedPaper> result = new ArrayList<>();
+        for (Paper p : papers) {
+            if (bookmarkedPaperIds.contains(p.getId())) continue;
+            result.add(toRecommendedPaper(p, "TRENDING_JOURNAL",
+                    "Bài viết trending trong journal bạn đang theo dõi"));
+            if (result.size() >= 20) break;
+        }
+        return result;
+    }
+
+    private List<RecommendedPaper> buildAllRecommendations(
             List<Long> keywordIds, List<Long> authorIds, Set<Long> bookmarkedPaperIds) {
 
         Map<Long, RecommendedPaper> map = new LinkedHashMap<>();
 
-        // Tiêu chí B: Bài viết mới nhất từ tác giả đang follow (Độ ưu tiên cao nhất)
+        // FOLLOWED_AUTHOR
         if (!authorIds.isEmpty()) {
             List<Paper> latestPapers = paperRepository.findLatestByAuthorIds(authorIds, PageRequest.of(0, 15));
             for (Paper p : latestPapers) {
                 if (bookmarkedPaperIds.contains(p.getId())) continue;
-                map.put(p.getId(), RecommendedPaper.builder()
-                        .id(p.getId())
-                        .title(p.getTitle())
-                        .journal(p.getJournal() != null ? p.getJournal() : "Academic Journal")
-                        .year(p.getPublicationDate() != null ? p.getPublicationDate().getYear() : 2026)
-                        .citations(p.getCitationCount())
-                        .doi(p.getDoi())
-                        .matchType("FOLLOWED_AUTHOR")
-                        .recommendationReason("Bài viết mới nhất từ tác giả bạn đang theo dõi")
-                        .build());
+                map.put(p.getId(), toRecommendedPaper(p, "FOLLOWED_AUTHOR",
+                        "Bài viết mới nhất từ tác giả bạn đang theo dõi"));
             }
         }
 
-        // Tiêu chí C: Trùng khớp từ khóa nhiều nhất
+        // KEYWORD_OVERLAP → có thể nâng lên COMBINED_MATCH
         List<Object[]> overlapRows = paperRepository.findByKeywordOverlap(keywordIds, PageRequest.of(0, 15));
         for (Object[] row : overlapRows) {
             Paper p = (Paper) row[0];
             Long matchCount = (Long) row[1];
             if (bookmarkedPaperIds.contains(p.getId())) continue;
-            
             if (map.containsKey(p.getId())) {
                 RecommendedPaper existing = map.get(p.getId());
                 existing.setMatchType("COMBINED_MATCH");
                 existing.setRecommendationReason("Khớp tác giả follow & trùng khớp " + matchCount + " từ khóa quan tâm");
             } else {
-                map.put(p.getId(), RecommendedPaper.builder()
-                        .id(p.getId())
-                        .title(p.getTitle())
-                        .journal(p.getJournal() != null ? p.getJournal() : "Academic Journal")
-                        .year(p.getPublicationDate() != null ? p.getPublicationDate().getYear() : 2026)
-                        .citations(p.getCitationCount())
-                        .doi(p.getDoi())
-                        .matchType("KEYWORD_OVERLAP")
-                        .recommendationReason("Trùng khớp " + matchCount + " từ khóa nghiên cứu bạn đang follow")
-                        .build());
+                map.put(p.getId(), toRecommendedPaper(p, "KEYWORD_OVERLAP",
+                        "Trùng khớp " + matchCount + " từ khóa nghiên cứu bạn đang follow"));
             }
         }
 
-        // Tiêu chí A: Trích dẫn nhiều nhất trong từ khóa follow mà chưa đọc
+        // TOP_CITED
         List<Paper> citedPapers = paperRepository.findTopCitedByKeywordIds(keywordIds, PageRequest.of(0, 15));
         for (Paper p : citedPapers) {
-            if (bookmarkedPaperIds.contains(p.getId())) continue;
-            if (map.containsKey(p.getId())) continue; // Đã map ở các tiêu chí trên
-
-            map.put(p.getId(), RecommendedPaper.builder()
-                    .id(p.getId())
-                    .title(p.getTitle())
-                    .journal(p.getJournal() != null ? p.getJournal() : "Academic Journal")
-                    .year(p.getPublicationDate() != null ? p.getPublicationDate().getYear() : 2026)
-                    .citations(p.getCitationCount())
-                    .doi(p.getDoi())
-                    .matchType("TOP_CITED")
-                    .recommendationReason("Bài viết có tầm ảnh hưởng (trích dẫn cao) trong chủ đề quan tâm")
-                    .build());
+            if (bookmarkedPaperIds.contains(p.getId()) || map.containsKey(p.getId())) continue;
+            map.put(p.getId(), toRecommendedPaper(p, "TOP_CITED",
+                    "Bài viết có tầm ảnh hưởng (trích dẫn cao) trong chủ đề quan tâm"));
         }
 
-        // Nếu số lượng gợi ý ít hơn 10 bài, tự động bù thêm bằng các bài báo nổi bật hệ thống
+        // RISING_PAPERS: bài mới có keyword trending
+        LocalDate sixMonthsAgo = LocalDate.now().minusMonths(6);
+        List<Paper> risingPapers = paperRepository.findRisingPapers(keywordIds, sixMonthsAgo, PageRequest.of(0, 8));
+        for (Paper p : risingPapers) {
+            if (bookmarkedPaperIds.contains(p.getId()) || map.containsKey(p.getId())) continue;
+            map.put(p.getId(), toRecommendedPaper(p, "RISING",
+                    "Nghiên cứu mới đang nổi bật trong chủ đề bạn quan tâm"));
+        }
+
+        // POPULAR fallback nếu chưa đủ 10
         if (map.size() < 10) {
             Pageable fallbackPageable = PageRequest.of(0, 15, Sort.by("citationCount").descending());
             List<Paper> popularFallback = paperRepository.findByStatus(PaperStatus.ACTIVE, fallbackPageable).getContent();
             for (Paper p : popularFallback) {
-                if (bookmarkedPaperIds.contains(p.getId())) continue;
-                if (map.containsKey(p.getId())) continue;
-
-                map.put(p.getId(), RecommendedPaper.builder()
-                        .id(p.getId())
-                        .title(p.getTitle())
-                        .journal(p.getJournal() != null ? p.getJournal() : "Academic Journal")
-                        .year(p.getPublicationDate() != null ? p.getPublicationDate().getYear() : 2026)
-                        .citations(p.getCitationCount())
-                        .doi(p.getDoi())
-                        .matchType("POPULAR")
-                        .recommendationReason("Nghiên cứu thịnh hành nổi bật trên hệ thống")
-                        .build());
+                if (bookmarkedPaperIds.contains(p.getId()) || map.containsKey(p.getId())) continue;
+                map.put(p.getId(), toRecommendedPaper(p, "POPULAR",
+                        "Nghiên cứu thịnh hành nổi bật trên hệ thống"));
                 if (map.size() >= 10) break;
             }
         }
 
-        // Giới hạn danh sách trong khoảng tối đa 20 bài báo
-        List<RecommendedPaper> finalRecommendations = new ArrayList<>(map.values());
-        if (finalRecommendations.size() > 20) {
-            finalRecommendations = finalRecommendations.subList(0, 20);
-        }
+        // Diversity Filter: tối đa 3 bài từ cùng journal
+        List<RecommendedPaper> filtered = applyDiversityFilter(new ArrayList<>(map.values()));
+        return filtered.size() > 20 ? filtered.subList(0, 20) : filtered;
+    }
 
-        // Đổ thông tin danh sách tác giả của từng bài báo (Tránh N+1 query)
-        if (!finalRecommendations.isEmpty()) {
-            List<Long> paperIds = finalRecommendations.stream().map(RecommendedPaper::getId).collect(Collectors.toList());
-            List<PaperAuthor> paLinks = paperAuthorRepository.findByPaperIdInWithAuthor(paperIds);
-            Map<Long, List<String>> authorMap = new HashMap<>();
-            for (PaperAuthor pa : paLinks) {
-                authorMap.computeIfAbsent(pa.getPaper().getId(), k -> new ArrayList<>())
-                        .add(pa.getAuthor().getName());
-            }
-            for (RecommendedPaper rp : finalRecommendations) {
-                rp.setAuthors(authorMap.getOrDefault(rp.getId(), List.of("Unknown Author")));
-            }
+    private List<RecommendedPaper> applyDiversityFilter(List<RecommendedPaper> papers) {
+        Map<String, Integer> journalCount = new HashMap<>();
+        List<RecommendedPaper> result = new ArrayList<>();
+        for (RecommendedPaper rp : papers) {
+            String journal = rp.getJournal() != null ? rp.getJournal() : "Unknown";
+            int count = journalCount.getOrDefault(journal, 0);
+            if (count >= 3) continue;
+            journalCount.put(journal, count + 1);
+            result.add(rp);
         }
+        return result;
+    }
 
-        return finalRecommendations;
+    private RecommendedPaper toRecommendedPaper(Paper p, String matchType, String reason) {
+        return RecommendedPaper.builder()
+                .id(p.getId())
+                .title(p.getTitle())
+                .journal(p.getJournal() != null ? p.getJournal() : "Academic Journal")
+                .year(p.getPublicationDate() != null ? p.getPublicationDate().getYear() : 2026)
+                .citations(p.getCitationCount())
+                .doi(p.getDoi())
+                .matchType(matchType)
+                .recommendationReason(reason)
+                .build();
+    }
+
+    private void enrichWithAuthors(List<RecommendedPaper> papers) {
+        if (papers.isEmpty()) return;
+        List<Long> paperIds = papers.stream().map(RecommendedPaper::getId).collect(Collectors.toList());
+        List<PaperAuthor> paLinks = paperAuthorRepository.findByPaperIdInWithAuthor(paperIds);
+        Map<Long, List<String>> authorMap = new HashMap<>();
+        for (PaperAuthor pa : paLinks) {
+            authorMap.computeIfAbsent(pa.getPaper().getId(), k -> new ArrayList<>())
+                    .add(pa.getAuthor().getName());
+        }
+        for (RecommendedPaper rp : papers) {
+            rp.setAuthors(authorMap.getOrDefault(rp.getId(), List.of("Unknown Author")));
+        }
     }
 
     private LandscapeSection buildLandscapeSection(List<Long> keywordIds, Set<String> domains) {
@@ -290,7 +379,7 @@ public class PersonalReportServiceImpl implements PersonalReportService {
             tagCloud.add(KeywordCoOccurrencePoint.builder()
                     .term((String) row[0])
                     .coOccurrenceCount((Long) row[1])
-                    .growthRate(avgTrend != null ? Math.round(avgTrend * 10.0) / 10.0 : 0.0)
+                    .growthRate(avgTrend != null ? Math.round((avgTrend / 10.0) * 10.0) / 10.0 : 0.0)
                     .build());
         }
 
