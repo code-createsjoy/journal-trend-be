@@ -30,12 +30,13 @@ public class HelixReportsController {
 
     /** Báo cáo cá nhân hóa của user hiện tại (xu hướng, gợi ý đọc, toàn cảnh lĩnh vực). */
     @GetMapping("/personal")
-    public PersonalReportResponse getPersonalReport() {
+    public PersonalReportResponse getPersonalReport(
+            @RequestParam(defaultValue = "ALL") String filterBy) {
         Long userId = com.norman.swp391.security.SecurityUtils.getCurrentUserId();
         if (userId == null) {
             throw new com.norman.swp391.exception.BadRequestException("Not authenticated");
         }
-        return personalReportService.generatePersonalReport(userId);
+        return personalReportService.generatePersonalReport(userId, filterBy);
     }
 
     @GetMapping(value = "/topic-trends.csv", produces = "text/csv")

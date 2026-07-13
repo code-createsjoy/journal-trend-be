@@ -14,6 +14,7 @@ public class PersonalReportResponse {
     private TrendsSection trends;
     private List<RecommendedPaper> recommendations;
     private LandscapeSection landscape;
+    private FollowStats followStats;
 
     @Data
     @Builder
@@ -101,5 +102,15 @@ public class PersonalReportResponse {
     public static class ResearchGapPoint {
         private String term;
         private Long paperCount;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FollowStats {
+        private int keywordCount;
+        private int authorCount;
+        private int journalCount;
     }
 }
