@@ -5,6 +5,7 @@ import com.norman.swp391.entity.enums.NotificationReadStatus;
 import com.norman.swp391.entity.enums.NotificationTriggerType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -53,4 +54,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Modifying
     @Query("DELETE FROM Notification n WHERE n.user.id = :userId AND n.readStatus = :readStatus")
     void deleteByUserIdAndReadStatus(@Param("userId") Long userId, @Param("readStatus") NotificationReadStatus readStatus);
+
+    /** BR-70: xóa các notification cũ hơn mốc thời gian truyền vào, trả về số dòng đã xóa. */
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM Notification n WHERE n.createdAt < :threshold")
+    int deleteByCreatedAtBefore(@Param("threshold") LocalDateTime threshold);
 }

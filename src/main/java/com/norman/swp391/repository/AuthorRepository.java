@@ -92,5 +92,9 @@ public interface AuthorRepository extends JpaRepository<Author, Long> {
            "WHERE (k.domain = :domain) " +
            "AND (:q IS NULL OR :q = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :q, '%')))")
     Page<Author> findTrendingAuthorsByDomain(@Param("domain") String domain, @Param("q") String q, @Param("year") int year, @Param("month") int month, Pageable pageable);
+
+    /** BR-35: gợi ý autocomplete theo tên tác giả, ưu tiên tác giả nhiều citation hơn. */
+    @Query("SELECT a FROM Author a WHERE LOWER(a.name) LIKE LOWER(CONCAT('%', :q, '%')) ORDER BY a.citationCount DESC")
+    List<Author> suggestByName(@Param("q") String q, Pageable pageable);
 }
 

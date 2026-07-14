@@ -189,10 +189,47 @@ public class NotificationServiceTest {
                 .sendNewPaperNotificationsEmail(
                         Mockito.eq(user.getEmail()),
                         Mockito.eq(user.getFullName()),
-                        Mockito.argThat(list -> list != null && list.size() == 3 
+                        Mockito.argThat(list -> list != null && list.size() == 3
                                 && list.stream().anyMatch(p -> p.getId().equals(paper1.getId()))
                                 && list.stream().anyMatch(p -> p.getId().equals(paper2.getId()))
                                 && list.stream().anyMatch(p -> p.getId().equals(paper3.getId())))
                 );
+    }
+
+    /** BR-70: notification cũ hơn ngưỡng retention phải bị xóa, notification gần đây phải được giữ lại. */
+    @Test
+    public void testPurgeOldNotifications() {
+        User user = userRepository.save(User.builder()
+                .email("br70testuser@example.com")
+                .password("password123")
+                .fullName("BR70 Test User")
+                .role(UserRole.RESEARCHER)
+                .status(UserStatus.ACTIVE)
+                .enabled(true)
+                .verified(true)
+                .build());
+
+        Notification oldNotif = notificationRepository.save(Notification.builder()
+                .user(user)
+                .message("Old notification, should be purged")
+                .triggerType(NotificationTriggerType.NEW_PAPER)
+                .readStatus(NotificationReadStatus.UNREAD)
+                .createdAt(LocalDateTime.now().minusDays(100))
+                .build());
+
+        Notification recentNotif = notificationRepository.save(Notification.builder()
+                .user(user)
+                .message("Recent notification, should be kept")
+                .triggerType(NotificationTriggerType.NEW_PAPER)
+                .readStatus(NotificationReadStatus.UNREAD)
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        notificationService.purgeOldNotifications();
+
+        assertTrue(notificationRepository.findById(oldNotif.getId()).isEmpty(),
+                "Notification older than retention threshold should have been deleted");
+        assertTrue(notificationRepository.findById(recentNotif.getId()).isPresent(),
+                "Recent notification should not be deleted");
     }
 }

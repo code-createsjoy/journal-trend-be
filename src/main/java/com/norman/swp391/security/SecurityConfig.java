@@ -58,7 +58,7 @@ public class SecurityConfig {
                         .requestMatchers("/auth/verify").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/analytics/**", "/api/papers/**", "/api/v1/papers/**", "/api/topics/**", "/api/authors/**", "/api/journals/**", "/api/v1/dashboard/**", "/api/v1/trends/**")
+                        .requestMatchers(HttpMethod.GET, "/api/analytics/**", "/api/papers/**", "/api/v1/papers/**", "/api/topics/**", "/api/authors/**", "/api/journals/**", "/api/v1/dashboard/**", "/api/v1/trends/**", "/api/v1/search/suggestions")
                         .permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api-docs/**", "/v3/api-docs/**").permitAll()

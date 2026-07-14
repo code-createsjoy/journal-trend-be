@@ -136,6 +136,8 @@ public class AppProperties {
         private int anomalyThresholdPercent = 300;
         /** BR-97: số ngày pending review trước khi expired. */
         private int pendingReviewExpiryDays = 30;
+        /** BR-70: số ngày giữ notification trước khi tự động xóa. */
+        private int notificationRetentionDays = 90;
         /** Sau sync/recalculate: backfill bao nhiêu tháng trend (0 = tắt). */
         private int trendBackfillMonths = 12;
         /** Number of overlap days for safer incremental sync. */

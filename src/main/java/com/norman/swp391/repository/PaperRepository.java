@@ -164,6 +164,19 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
             @Param("journalId") Long journalId,
             Pageable pageable);
 
+    /** BR-35: gợi ý autocomplete theo title, ưu tiên bài nhiều citation hơn. */
+    @Query("""
+            SELECT p FROM Paper p
+            WHERE p.status = :status AND p.reviewStatus = :reviewStatus
+              AND LOWER(p.title) LIKE LOWER(CONCAT('%', :q, '%'))
+            ORDER BY p.citationCount DESC
+            """)
+    List<Paper> suggestByTitle(
+            @Param("status") PaperStatus status,
+            @Param("reviewStatus") PaperReviewStatus reviewStatus,
+            @Param("q") String q,
+            Pageable pageable);
+
     /**
      * Lấy bài báo theo domain của keyword (để lấy bài báo theo topic/domain).
      */

@@ -17,4 +17,12 @@ public interface KeywordRepository extends JpaRepository<Keyword, Long> {
 
     @org.springframework.data.jpa.repository.Query("SELECT k FROM Keyword k WHERE LOWER(k.term) IN :terms")
     java.util.List<Keyword> findByTermInIgnoreCase(@org.springframework.data.repository.query.Param("terms") java.util.Collection<String> terms);
+
+    /** BR-35: gợi ý autocomplete theo term khớp gần đúng, ưu tiên keyword nhiều bài hơn. */
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT k FROM Keyword k
+        WHERE LOWER(k.term) LIKE LOWER(CONCAT('%', :q, '%'))
+        ORDER BY k.paperCount DESC
+        """)
+    List<Keyword> suggestByTerm(@org.springframework.data.repository.query.Param("q") String q, org.springframework.data.domain.Pageable pageable);
 }
