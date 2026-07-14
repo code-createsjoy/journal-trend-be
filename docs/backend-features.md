@@ -36,7 +36,7 @@ Nếu SyncLog còn RUNNING quá `staleSyncMinutes` phút: `POST /api/admin/sync/
 
 ## 2. Trend Calculation
 
-### Công thức (BR-02)
+### Công thức (BR-38)
 
 ```
 TrendScore = (currentMonthCount - prevMonthCount) / prevMonthCount × 100%
@@ -44,11 +44,11 @@ TrendScore = (currentMonthCount - prevMonthCount) / prevMonthCount × 100%
 
 Lưu vào `publication_trends(keyword_id, trend_year, trend_month)` — upsert dựa vào unique index.
 
-### Điều kiện "trending" (BR-04)
+### Điều kiện "trending" (BR-44)
 
-- `TrendScore ≥ 15%` (cấu hình `trending-threshold-percent`)
-- Trong `3 tháng liên tiếp` (`trending-consecutive-months`)
-- Keyword phải có ít nhất `5 paper` (`min-keyword-papers`)
+- `TrendScore ≥ 15%` (BR-39, cấu hình `trending-threshold-percent`)
+- Trong `3 tháng liên tiếp` (BR-42, `trending-consecutive-months`)
+- Keyword phải có ít nhất `5 paper` (BR-43, `min-keyword-papers`)
 
 ### Anomaly (BR-50)
 

@@ -38,17 +38,17 @@
 - **Search & Filtering Engine:** The system must allow users to query papers by keyword, author, and journal using the aggregated database metadata within predefined domains (AI, ML, Robotics, Data Science).
 - **Trend Analytics & Calculation:**
   - The system must display publication trend charts by keyword/topic.
-  - **Trending Rule (BR-04):** The system must automatically identify a topic as "Trending" if its trend score is $\ge +15\%$ for 3 consecutive months.
-  - **Score Formula (BR-02):** Trend Score = `((Current Month Count - Previous Month Count) / Previous Month Count) * 100%`.
+  - **Trending Rule (BR-39/BR-42/BR-43/BR-44):** The system must automatically identify a topic as "Trending" if its trend score is $\ge +15\%$ for 3 consecutive months, with at least 5 papers.
+  - **Score Formula (BR-38):** Trend Score = `((Current Month Count - Previous Month Count) / Previous Month Count) * 100%`.
 - **Personalization Module & Quotas:**
-  - Users must be able to bookmark papers (Limit: Max 200 papers per user).
-  - Users must be able to follow up to 20 keywords and 10 journals.
+  - Users must be able to bookmark papers (Limit: Max 200 papers per user — BR-57).
+  - Users must be able to follow up to 20 keywords (BR-55) and 10 journals (BR-56).
   - The system must trigger email or in-app notifications for new matches based on followed entities.
-  - **Deduplication (BR-05):** Duplicate papers aggregated from multiple API sources must be deduplicated by their DOI before notifying users.
+  - **Deduplication (BR-09/BR-71):** Duplicate papers aggregated from multiple API sources must be deduplicated by their DOI before notifying users.
 - **Reporting:** The system must support exporting trend data and paper lists in CSV or PDF formats.
 - **Background Synchronization:** 
-  - The system must run periodic batch jobs (e.g., daily at 02:00 AM) to fetch metadata (title, abstract, keywords, year, authors, journal) from Semantic Scholar, OpenAlex, and Crossref.
-  - **Restriction (BR-01):** Full-text PDFs must not be retrieved or cached to comply with copyright restrictions.
+  - The system must run periodic batch jobs (e.g., daily at 02:00 AM — BR-05) to fetch metadata (title, abstract, keywords, year, authors, journal) from Semantic Scholar, OpenAlex, and Crossref.
+  - **Restriction (BR-04):** Full-text PDFs must not be retrieved or cached to comply with copyright restrictions.
 
 ## 5. Non-Functional Requirements
 - **Performance:** 

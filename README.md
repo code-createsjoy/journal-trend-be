@@ -67,12 +67,12 @@ The system utilizes a decoupled Full-Stack architecture separating the interacti
 
 The system enforces the following behaviors, definitions, and calculations:
 
-* [cite_start]**BR-01 (Behavioral):** The system **SHALL only** store and display metadata (title, abstract, keywords, year, authors, journal); full-text content **SHALL NOT** be retrieved or cached due to copyright restrictions[cite: 6].
-* [cite_start]**BR-02 (Calculational):** Trend score is computed using the following formula[cite: 6]:
+* [cite_start]**BR-04 (Behavioral):** The system **SHALL only** store and display metadata (title, abstract, keywords, year, authors, journal); full-text content **SHALL NOT** be retrieved or cached due to copyright restrictions[cite: 6].
+* [cite_start]**BR-38 (Calculational):** Trend score is computed using the following formula[cite: 6]:
     $$\text{Trend Score} = \frac{\text{Current Month Paper Count} - \text{Previous Month Paper Count}}{\text{Previous Month Paper Count}} \times 100\%$$
-* **BR-03 (Temporal):** API synchronization runs automatically on a configured schedule (default: daily at 02:00 AM). Manual sync triggers are restricted to the System Admin only[cite: 6].
-* **BR-04 (Definitional):** A **"Trending Topic"** is strictly defined as any keyword maintaining a trend score $\ge +15\%$ for 3 consecutive months[cite: 6].
-* **BR-05 (Behavioral):** Notifications are sent only once per new paper per user subscription; duplicate papers imported from multiple API sources are automatically deduplicated by their **DOI**[cite: 6].
+* **BR-05/BR-06 (Temporal/Auth):** API synchronization runs automatically on a configured schedule (default: daily at 02:00 AM). Manual sync triggers are restricted to the System Admin only[cite: 6].
+* **BR-39/BR-42/BR-43/BR-44 (Definitional):** A **"Trending Topic"** is strictly defined as any keyword with at least 5 papers maintaining a trend score $\ge +15\%$ for 3 consecutive months[cite: 6].
+* **BR-09/BR-71 (Behavioral):** Notifications are sent only once per new paper per user subscription; duplicate papers imported from multiple API sources are automatically deduplicated by their **DOI**[cite: 6].
 
 ---
 

@@ -114,7 +114,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BadRequestException.class)
 /**
  * Làm mới access token bằng refresh token.
  */

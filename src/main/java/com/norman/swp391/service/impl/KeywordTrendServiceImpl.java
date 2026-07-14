@@ -68,7 +68,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
     }
 
     /**
-     * Tính TrendScore (BR-02) cho 1 tháng cụ thể của TẤT CẢ keyword: đếm số paper tháng này
+     * Tính TrendScore (BR-38) cho 1 tháng cụ thể của TẤT CẢ keyword: đếm số paper tháng này
      * vs tháng trước, tính % thay đổi, lưu vào publication_trends. Nếu là tháng liền trước
      * (tháng "chốt sổ" gần nhất), đồng thời cập nhật luôn trendScore/paperCount trên Keyword.
      */
@@ -141,8 +141,9 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
     }
 
     /**
-     * Keyword được coi là "trending" (BR-04) khi TrendScore &ge; ngưỡng cấu hình
-     * trong N tháng liên tiếp gần nhất (mặc định 3 tháng, xem trending-consecutive-months).
+     * Keyword được coi là "trending" (BR-44: 15% × 3 tháng liên tiếp) khi TrendScore &ge;
+     * ngưỡng cấu hình (BR-39) trong N tháng liên tiếp gần nhất (mặc định 3 tháng — BR-42,
+     * xem trending-consecutive-months).
      */
     @Override
     @Transactional(readOnly = true)
@@ -192,7 +193,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
 
     /**
      * Top keyword theo trend score CỦA RIÊNG tháng được chọn — không áp dụng luật
-     * "trending" 3-tháng-liên-tiếp (BR-04). Dùng cho tính năng so sánh theo tháng trên UI,
+     * "trending" 3-tháng-liên-tiếp (BR-42, BR-44). Dùng cho tính năng so sánh theo tháng trên UI,
      * nên một tháng vẫn có xếp hạng dù các tháng trước đó không đủ dữ liệu để tính chuỗi trending.
      */
     @Override
@@ -328,7 +329,7 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         return map;
     }
 
-    /** Công thức BR-02: TrendScore = (thángNay - thángTrước) / thángTrước × 100%. */
+    /** Công thức BR-38: TrendScore = (thángNay - thángTrước) / thángTrước × 100%. */
     private BigDecimal calculateTrendScore(int current, int previous) {
         if (previous == 0) {
             return current > 0 ? BigDecimal.valueOf(100).setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;

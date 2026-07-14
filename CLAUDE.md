@@ -78,15 +78,15 @@ com.norman.swp391/
 3. `RateLimitFilter` (Bucket4j) blocks >60 req/min per IP
 4. `@PreAuthorize` on controllers enforces `UserRole` (STUDENT, LECTURER, RESEARCHER, ADMIN, SUPER_ADMIN)
 
-### Trend Calculation (BR-02)
+### Trend Calculation (BR-38)
 
 `TrendScore = (currentMonth - prevMonth) / prevMonth × 100%`
 
-A keyword is "trending" when score ≥ 15% for 3 consecutive months (BR-04). Pre-calculated monthly values stored in `publication_trends` table for fast dashboard queries.
+A keyword is "trending" (BR-44) when score ≥ 15% (BR-39) for 3 consecutive months (BR-42), provided the keyword has ≥ 5 papers (BR-43). Pre-calculated monthly values stored in `publication_trends` table for fast dashboard queries.
 
 ### OpenAlex Sync
 
-`DataSyncScheduler` → `PaperSyncService` → `OpenAlexClient`. Paginates through results, deduplicates by DOI (`source_type` + `source_identifier` unique index), stores only metadata (no full-text, BR-01).
+`DataSyncScheduler` → `PaperSyncService` → `OpenAlexClient`. Paginates through results, deduplicates by DOI (`source_type` + `source_identifier` unique index, BR-09), stores only metadata (no full-text, BR-04).
 
 ---
 

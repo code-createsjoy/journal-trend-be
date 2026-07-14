@@ -66,9 +66,9 @@ Tất cả config được đọc qua `AppProperties` với prefix `app.*` trong
 
 | Property | Default | Mô tả |
 |---|---|---|
-| `app.sync.min-keyword-papers` | `5` | Số paper tối thiểu để keyword được trending |
-| `app.sync.trending-threshold-percent` | `15` | % tăng trưởng để là trending (BR-04) |
-| `app.sync.trending-consecutive-months` | `3` | Số tháng liên tiếp phải đạt ngưỡng |
+| `app.sync.min-keyword-papers` | `5` | Số paper tối thiểu để keyword được trending (BR-43) |
+| `app.sync.trending-threshold-percent` | `15` | % tăng trưởng để là trending (BR-39) |
+| `app.sync.trending-consecutive-months` | `3` | Số tháng liên tiếp phải đạt ngưỡng (BR-42) |
 | `app.sync.trend-backfill-months` | `12` | Số tháng lịch sử backfill sau recalculate |
 | `app.sync.anomaly-threshold-percent` | `300` | % tăng để gắn nhãn Anomaly (BR-50) |
 

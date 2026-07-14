@@ -104,7 +104,7 @@ public class TrendDemoStatsServiceImpl implements TrendDemoStatsService {
                 .toList();
     }
 
-    /** Đếm số keyword thỏa ĐỦ 2 điều kiện "trending chính thức" (BR-04): đủ số paper tối thiểu + trending liên tiếp N tháng. */
+    /** Đếm số keyword thỏa ĐỦ 2 điều kiện "trending chính thức" (BR-44): đủ số paper tối thiểu (BR-43) + trending liên tiếp N tháng (BR-39, BR-42). */
     private long countOfficialTrendingKeywords(
             int minPapers, int threshold, int consecutive, YearMonth end) {
         BigDecimal thr = BigDecimal.valueOf(threshold);
