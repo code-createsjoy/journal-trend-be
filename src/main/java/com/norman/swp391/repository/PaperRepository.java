@@ -332,6 +332,29 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
     List<Object[]> findByTrendingKeywordIdsWithOverlap(@Param("keywordIds") java.util.Collection<Long> keywordIds, Pageable pageable);
 
     @Query("""
+        SELECT p, COUNT(pk.id) as matchCount, MAX(COALESCE(pk.keyword.trendScore, 0)) as maxTrend
+        FROM PaperKeyword pk
+        JOIN pk.paper p
+        WHERE pk.keyword.keywordId IN :keywordIds
+          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        GROUP BY p.id, p.title, p.abstractText, p.doi, p.publicationDate, p.citationCount, p.pdfUrl, p.sourceUrl, p.openAccess, p.sourceType, p.sourceIdentifier, p.primarySource, p.status, p.reviewStatus, p.createdAt, p.journal, p.journalRef, p.conflictAbstract, p.conflictSource, p.conflictTitle, p.reviewFlaggedAt
+        ORDER BY COUNT(pk.id) DESC, MAX(COALESCE(pk.keyword.trendScore, 0)) DESC, p.publicationDate DESC
+        """)
+    List<Object[]> findByKeywordIdsWithOverlapSortedByTrend(@Param("keywordIds") java.util.Collection<Long> keywordIds, Pageable pageable);
+
+    @Query("""
+        SELECT DISTINCT p FROM Paper p
+        WHERE p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+          AND p.publicationDate >= :since
+          AND p.id IN (
+              SELECT pk.paper.id FROM PaperKeyword pk
+              WHERE pk.keyword.trendScore >= 15.0
+          )
+        ORDER BY p.publicationDate DESC, p.citationCount DESC
+        """)
+    List<Paper> findRisingPapersGlobal(@Param("since") java.time.LocalDate since, Pageable pageable);
+
+    @Query("""
         SELECT DISTINCT p FROM Paper p
         WHERE p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
           AND p.publicationDate >= :since
