@@ -39,6 +39,13 @@ public class RefreshToken {
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
 
+    /**
+     * Thời điểm refresh token được dùng gần nhất (login/refresh).
+     * Để nullable: các token cũ trong DB không có giá trị → coi là "chưa track", bỏ qua idle-check.
+     */
+    @Column(name = "last_used_at")
+    private LocalDateTime lastUsedAt;
+
     @Column(nullable = false)
     private boolean revoked;
 }
