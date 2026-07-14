@@ -62,33 +62,9 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                 .map(fj -> fj.getJournal().getId())
                 .collect(Collectors.toList());
 
-        // IDs có fallback — dùng cho tab ALL và trends/landscape
-        List<Long> keywordIds = new ArrayList<>(followedKeywordIds);
-        List<Long> authorIds = new ArrayList<>(followedAuthorIds);
-
-        if (keywordIds.isEmpty()) {
-            List<Object[]> topKeywords = paperKeywordRepository.findTopKeywordsByPaperCount(
-                    PaperStatus.ACTIVE, PaperReviewStatus.NONE, PageRequest.of(0, 5));
-            for (Object[] row : topKeywords) {
-                Long kwId = (Long) row[0];
-                keywordIds.add(kwId);
-                Keyword kw = keywordRepository.findById(kwId).orElse(null);
-                if (kw != null && kw.getDomain() != null) {
-                    domains.add(kw.getDomain().toLowerCase());
-                }
-            }
-        }
-
-        if (authorIds.isEmpty()) {
-            authorIds = authorRepository.findFeatured(PageRequest.of(0, 5))
-                    .getContent().stream()
-                    .map(Author::getId)
-                    .collect(Collectors.toList());
-        }
-
-        if (domains.isEmpty()) {
-            domains.add("general");
-        }
+        // Dùng trực tiếp dữ liệu thực tế user đang follow — không fallback
+        List<Long> keywordIds = followedKeywordIds;
+        List<Long> authorIds = followedAuthorIds;
 
         Set<Long> bookmarkedPaperIds = new HashSet<>(collectionPaperRepository.findPaperIdsByUserId(userId));
 
@@ -180,15 +156,25 @@ public class PersonalReportServiceImpl implements PersonalReportService {
             List<Long> followedKeywordIds, Set<Long> bookmarkedPaperIds) {
         if (followedKeywordIds.isEmpty()) return new ArrayList<>();
 
-        List<Object[]> rows = paperRepository.findByTrendingKeywordIdsWithOverlap(
-                followedKeywordIds, PageRequest.of(0, 20));
+        // Sort: overlap count DESC → trendScore DESC — không filter trendScore, chỉ dùng để sắp xếp
+        List<Object[]> rows = paperRepository.findByKeywordIdsWithOverlapSortedByTrend(
+                followedKeywordIds, PageRequest.of(0, 25));
         List<RecommendedPaper> result = new ArrayList<>();
         for (Object[] row : rows) {
             Paper p = (Paper) row[0];
             Long matchCount = (Long) row[1];
+            Double maxTrend = (Double) row[2];
             if (bookmarkedPaperIds.contains(p.getId())) continue;
-            result.add(toRecommendedPaper(p, "TRENDING_KEYWORD",
-                    "Trùng khớp " + matchCount + " keyword đang trending"));
+
+            String reason;
+            if (maxTrend != null && maxTrend >= 15.0) {
+                reason = "Trùng khớp " + matchCount + " keyword đang trending (trendScore " + String.format("%.1f", maxTrend) + "%)";
+            } else {
+                reason = "Trùng khớp " + matchCount + " keyword bạn đang follow";
+            }
+
+            String matchType = (maxTrend != null && maxTrend >= 15.0) ? "TRENDING_KEYWORD" : "KEYWORD_OVERLAP";
+            result.add(toRecommendedPaper(p, matchType, reason));
             if (result.size() >= 20) break;
         }
         return result;
@@ -247,6 +233,12 @@ public class PersonalReportServiceImpl implements PersonalReportService {
 
     private List<RecommendedPaper> buildAllRecommendations(
             List<Long> keywordIds, List<Long> authorIds, Set<Long> bookmarkedPaperIds) {
+
+        // Trường hợp user chưa follow bất kỳ thứ gì → chỉ hiển thị RISING + POPULAR
+        boolean hasNoFollow = keywordIds.isEmpty() && authorIds.isEmpty();
+        if (hasNoFollow) {
+            return buildNoFollowRecommendations(bookmarkedPaperIds);
+        }
 
         Map<Long, RecommendedPaper> map = new LinkedHashMap<>();
 
@@ -308,6 +300,34 @@ public class PersonalReportServiceImpl implements PersonalReportService {
         // Diversity Filter: tối đa 3 bài từ cùng journal
         List<RecommendedPaper> filtered = applyDiversityFilter(new ArrayList<>(map.values()));
         return filtered.size() > 20 ? filtered.subList(0, 20) : filtered;
+    }
+
+    private List<RecommendedPaper> buildNoFollowRecommendations(Set<Long> bookmarkedPaperIds) {
+        Map<Long, RecommendedPaper> map = new LinkedHashMap<>();
+
+        // RISING: bài mới ≤ 6 tháng có keyword trendScore ≥ 15%, sắp xếp trendScore cao → thấp
+        LocalDate sixMonthsAgo = LocalDate.now().minusMonths(6);
+        List<Paper> risingPapers = paperRepository.findRisingPapersGlobal(sixMonthsAgo, PageRequest.of(0, 20));
+        for (Paper p : risingPapers) {
+            if (bookmarkedPaperIds.contains(p.getId())) continue;
+            map.put(p.getId(), toRecommendedPaper(p, "RISING",
+                    "Nghiên cứu mới đang nổi bật trên hệ thống"));
+        }
+
+        // POPULAR: bù đủ 20 nếu RISING chưa đủ
+        if (map.size() < 20) {
+            Pageable fallbackPageable = PageRequest.of(0, 30, Sort.by("citationCount").descending());
+            List<Paper> popularFallback = paperRepository.findByStatus(PaperStatus.ACTIVE, fallbackPageable).getContent();
+            for (Paper p : popularFallback) {
+                if (bookmarkedPaperIds.contains(p.getId()) || map.containsKey(p.getId())) continue;
+                map.put(p.getId(), toRecommendedPaper(p, "POPULAR",
+                        "Nghiên cứu thịnh hành nổi bật trên hệ thống"));
+                if (map.size() >= 20) break;
+            }
+        }
+
+        List<RecommendedPaper> result = new ArrayList<>(map.values());
+        return result.size() > 20 ? result.subList(0, 20) : result;
     }
 
     private List<RecommendedPaper> applyDiversityFilter(List<RecommendedPaper> papers) {
