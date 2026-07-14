@@ -12,6 +12,7 @@ import com.norman.swp391.dto.request.auth.UpdateProfileRequest;
 import com.norman.swp391.dto.response.auth.AuthResponse;
 import com.norman.swp391.dto.response.auth.TokenResponse;
 import com.norman.swp391.dto.response.auth.UserResponse;
+import com.norman.swp391.entity.PasswordHistory;
 import com.norman.swp391.entity.PasswordResetToken;
 import com.norman.swp391.entity.RefreshToken;
 import com.norman.swp391.entity.User;
@@ -20,6 +21,7 @@ import com.norman.swp391.entity.enums.UserStatus;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.mapper.UserMapper;
+import com.norman.swp391.repository.PasswordHistoryRepository;
 import com.norman.swp391.repository.PasswordResetTokenRepository;
 import com.norman.swp391.repository.RefreshTokenRepository;
 import com.norman.swp391.repository.UserRepository;
@@ -51,6 +53,7 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final PasswordHistoryRepository passwordHistoryRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthenticationManager authenticationManager;
@@ -203,6 +206,8 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Reset token has expired");
         }
         User user = resetToken.getUser();
+        enforcePasswordHistory(user, request.getNewPassword());
+        archiveOldPassword(user);
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
         resetToken.setUsed(true);
@@ -224,6 +229,8 @@ public class AuthServiceImpl implements AuthService {
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new BadRequestException("Current password is incorrect");
         }
+        enforcePasswordHistory(user, request.getNewPassword());
+        archiveOldPassword(user);
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
         refreshTokenRepository.deleteByUserId(userId);
@@ -278,6 +285,53 @@ public class AuthServiceImpl implements AuthService {
         }
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
         return UserMapper.toResponse(user);
+    }
+
+/**
+ * Chặn tái sử dụng mật khẩu: so mật khẩu mới với mật khẩu hiện tại và (N-1) mật khẩu cũ.
+ */
+    private void enforcePasswordHistory(User user, String newRawPassword) {
+        int n = appProperties.getPasswordHistoryCount();
+        if (n <= 0) {
+            return;
+        }
+        String errorMessage = "New password must be different from your last " + n + " passwords";
+
+        // 1. So với mật khẩu hiện tại.
+        if (passwordEncoder.matches(newRawPassword, user.getPassword())) {
+            throw new BadRequestException(errorMessage);
+        }
+        // 2. So với (N-1) mật khẩu cũ gần nhất trong lịch sử.
+        passwordHistoryRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                .stream()
+                .limit(Math.max(0, n - 1))
+                .forEach(history -> {
+                    if (passwordEncoder.matches(newRawPassword, history.getPasswordHash())) {
+                        throw new BadRequestException(errorMessage);
+                    }
+                });
+    }
+
+/**
+ * Lưu mật khẩu hiện tại vào lịch sử rồi dọn bớt, chỉ giữ (N-1) bản ghi mới nhất.
+ */
+    private void archiveOldPassword(User user) {
+        int n = appProperties.getPasswordHistoryCount();
+        if (n <= 0) {
+            return;
+        }
+        passwordHistoryRepository.save(PasswordHistory.builder()
+                .user(user)
+                .passwordHash(user.getPassword())
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        // Sau khi thêm mật khẩu cũ, chỉ cần giữ (N-1) bản trong lịch sử
+        // (mật khẩu hiện tại được kiểm tra riêng qua user.getPassword()).
+        passwordHistoryRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                .stream()
+                .skip(Math.max(0, n - 1))
+                .forEach(passwordHistoryRepository::delete);
     }
 
 /**
