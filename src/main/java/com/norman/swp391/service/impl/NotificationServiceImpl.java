@@ -228,7 +228,7 @@ public class NotificationServiceImpl implements NotificationService {
                                     .user(user)
                                     .paper(paper)
                                     .journal(paper.getJournalRef())
-                                    .message("New paper in journal you follow: " + truncate(paper.getTitle(), 120))
+                                    .message("New paper in journal you follow " + paper.getJournalRef().getName() + ": " + truncate(paper.getTitle(), 80))
                                     .triggerType(NotificationTriggerType.NEW_PAPER)
                                     .readStatus(NotificationReadStatus.UNREAD)
                                     .createdAt(LocalDateTime.now())
