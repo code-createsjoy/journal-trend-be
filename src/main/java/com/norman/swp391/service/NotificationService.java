@@ -46,4 +46,7 @@ public interface NotificationService {
     void deleteAllRead();
 
     void markMultipleAsRead(List<Long> notificationIds);
+
+    /** BR-70: xóa các notification cũ hơn ngưỡng retention (mặc định 90 ngày). */
+    void purgeOldNotifications();
 }

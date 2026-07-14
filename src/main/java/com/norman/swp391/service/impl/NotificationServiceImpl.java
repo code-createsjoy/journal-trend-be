@@ -1,5 +1,6 @@
 package com.norman.swp391.service.impl;
 
+import com.norman.swp391.config.AppProperties;
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.notification.NotificationResponse;
 import com.norman.swp391.entity.FollowAuthor;
@@ -36,6 +37,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -44,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Triển khai dịch vụ thông báo.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {
@@ -56,6 +59,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final PaperKeywordRepository paperKeywordRepository;
     private final PaperAuthorRepository paperAuthorRepository;
     private final EmailService emailService;
+    private final AppProperties appProperties;
 
     /** Danh sách thông báo của user hiện tại, mới nhất trước, có phân trang. */
     @Override
@@ -375,6 +379,18 @@ public class NotificationServiceImpl implements NotificationService {
             return "";
         }
         return text.length() <= max ? text : text.substring(0, max - 1) + "…";
+    }
+
+    /** BR-70: xóa các notification cũ hơn ngưỡng retention (mặc định 90 ngày), chạy định kỳ qua scheduler. */
+    @Override
+    @Transactional
+    public void purgeOldNotifications() {
+        int retentionDays = appProperties.getSync().getNotificationRetentionDays();
+        LocalDateTime threshold = LocalDateTime.now().minusDays(retentionDays);
+        int deleted = notificationRepository.deleteByCreatedAtBefore(threshold);
+        if (deleted > 0) {
+            log.info("[NOTIF_PURGE] Deleted {} notification(s) older than {} days", deleted, retentionDays);
+        }
     }
 
     /** Lấy userId của user đang đăng nhập, throw nếu chưa xác thực. */
