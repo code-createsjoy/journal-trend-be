@@ -127,6 +127,16 @@ public class AuthServiceImpl implements AuthService {
             refreshTokenRepository.save(stored);
             throw new BadRequestException("Refresh token expired");
         }
+        // Idle check: token có track (lastUsedAt != null) mà không được dùng quá lâu thì từ chối.
+        // Token cũ trong DB (lastUsedAt == null) bỏ qua kiểm tra này, chỉ dựa vào expiresAt như cũ.
+        if (stored.getLastUsedAt() != null) {
+            long idleMs = java.time.Duration.between(stored.getLastUsedAt(), LocalDateTime.now()).toMillis();
+            if (idleMs > appProperties.getJwt().getRefreshIdleTimeoutMs()) {
+                stored.setRevoked(true);
+                refreshTokenRepository.save(stored);
+                throw new BadRequestException("Session expired due to inactivity");
+            }
+        }
         if (!jwtTokenProvider.validateRefreshToken(request.getRefreshToken())) {
             stored.setRevoked(true);
             refreshTokenRepository.save(stored);
@@ -134,6 +144,8 @@ public class AuthServiceImpl implements AuthService {
         }
         User user = stored.getUser();
         String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail(), user.getRole());
+        stored.setLastUsedAt(LocalDateTime.now()); // "chạm" lại mốc idle → sliding window khi user còn hoạt động
+        refreshTokenRepository.save(stored);
         return TokenResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(request.getRefreshToken())
@@ -280,6 +292,7 @@ public class AuthServiceImpl implements AuthService {
                 .token(refreshTokenValue)
                 .user(user)
                 .expiresAt(LocalDateTime.now().plusSeconds(jwtTokenProvider.getRefreshExpirationMs() / 1000))
+                .lastUsedAt(LocalDateTime.now())
                 .revoked(false)
                 .build();
         refreshTokenRepository.save(refreshToken);

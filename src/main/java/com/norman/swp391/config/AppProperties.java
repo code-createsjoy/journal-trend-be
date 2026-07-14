@@ -53,6 +53,8 @@ public class AppProperties {
         private String refreshSecret;
         private long accessExpirationMs = 900_000L;
         private long refreshExpirationMs = 604_800_000L;
+        /** Idle timeout: refresh token không được dùng quá thời gian này (ms) sẽ bị từ chối. Mặc định 30 phút. */
+        private long refreshIdleTimeoutMs = 1_800_000L;
     }
 
     @Getter
