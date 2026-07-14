@@ -57,7 +57,11 @@ public class JournalServiceImpl implements JournalService {
     }
 
     /**
-     * Tính Impact Factor proxy = tổng citation / số bài ACTIVE của từng tạp chí.
+     * Tính Average Citations per Paper (thuật ngữ bibliometrics: CPP - Citations per Publication)
+     * = tổng citation / số bài ACTIVE của từng tạp chí — proxy thay cho Journal Impact Factor
+     * chính thức (Clarivate/JCR, dữ liệu độc quyền không truy cập được qua OpenAlex).
+     * Cùng bản chất với cách Scopus tính CiteScore (citation / số bài), chỉ khác là không
+     * giới hạn theo cửa sổ nhiều năm vì dữ liệu sync chưa đủ sâu.
      * Dùng 1 query GROUP BY để lấy thống kê cho toàn bộ tạp chí cùng lúc (tránh N+1),
      * sau đó chỉ ghi lại những tạp chí có giá trị thay đổi.
      */
