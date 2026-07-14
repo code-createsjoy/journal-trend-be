@@ -57,6 +57,7 @@ app:
     refresh-idle-timeout-ms: ${JWT_REFRESH_IDLE_TIMEOUT_MS:1800000}
   password-reset-expiration-minutes: 30
   email-verification-expiration-minutes: ${EMAIL_VERIFICATION_EXPIRATION_MINUTES:1440}
+  password-history-count: ${PASSWORD_HISTORY_COUNT:3}
   rate-limit-per-minute: 60
   groq:
     api-key: ${GROQ_API_KEY:}

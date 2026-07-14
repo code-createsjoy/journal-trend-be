@@ -22,6 +22,8 @@ public class AppProperties {
     private String backendBaseUrl = "http://localhost:8080";
     private int passwordResetExpirationMinutes;
     private int emailVerificationExpirationMinutes = 1440;
+    /** Số mật khẩu gần nhất bị chặn tái sử dụng (bao gồm mật khẩu hiện tại). */
+    private int passwordHistoryCount = 3;
     /**
      * Thực hiện Jwt.
      */
