@@ -163,7 +163,8 @@ public class PersonalReportServiceImpl implements PersonalReportService {
         for (Object[] row : rows) {
             Paper p = (Paper) row[0];
             Long matchCount = (Long) row[1];
-            Double maxTrend = (Double) row[2];
+            Number maxTrendVal = (Number) row[2];
+            Double maxTrend = maxTrendVal != null ? maxTrendVal.doubleValue() : null;
             if (bookmarkedPaperIds.contains(p.getId())) continue;
 
             String reason;
