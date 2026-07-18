@@ -3,6 +3,9 @@ package com.norman.swp391.service;
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.notification.NotificationResponse;
 import com.norman.swp391.entity.Keyword;
+import com.norman.swp391.entity.User;
+import com.norman.swp391.entity.enums.RoleRequestRejectionReason;
+import com.norman.swp391.entity.enums.UserRole;
 import java.util.List;
 import java.util.Set;
 import org.springframework.data.domain.Pageable;
@@ -49,4 +52,9 @@ public interface NotificationService {
 
     /** BR-70: xóa các notification cũ hơn ngưỡng retention (mặc định 90 ngày). */
     void purgeOldNotifications();
+
+    /** Thông báo kết quả duyệt/từ chối đơn xin đổi role cho user nộp đơn. */
+    void notifyRoleRequestApproved(User targetUser, UserRole newRole);
+
+    void notifyRoleRequestRejected(User targetUser, RoleRequestRejectionReason rejectionReason);
 }
