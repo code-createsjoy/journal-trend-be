@@ -34,6 +34,29 @@ public interface PaperAuthorRepository extends JpaRepository<PaperAuthor, Long> 
     long countByAuthorId(Long authorId);
 
     /**
+     * Đếm số paper theo nhiều author cùng lúc (batch) — tránh N+1 khi hiển thị danh sách tác giả.
+     * Trả về Object[]{ authorId, count }.
+     */
+    @Query("""
+        SELECT pa.author.id, COUNT(pa)
+        FROM PaperAuthor pa
+        WHERE pa.author.id IN :authorIds
+        GROUP BY pa.author.id
+        """)
+    List<Object[]> countByAuthorIdIn(@Param("authorIds") java.util.Collection<Long> authorIds);
+
+    /**
+     * Paper ACTIVE của 1 author, phân trang ở DB (thay vì load hết rồi sort/cắt trang bằng Java).
+     */
+    @Query("""
+        SELECT p FROM PaperAuthor pa JOIN pa.paper p
+        WHERE pa.author.id = :authorId AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        ORDER BY p.citationCount DESC
+        """)
+    org.springframework.data.domain.Page<com.norman.swp391.entity.Paper> findActivePapersByAuthorId(
+            @Param("authorId") Long authorId, org.springframework.data.domain.Pageable pageable);
+
+    /**
      * Đếm số paper ACTIVE của 1 tác giả — dùng khi cần số liệu nhất quán với
      * findAuthorsOrderByPaperCountDesc (cũng chỉ tính paper ACTIVE).
      */

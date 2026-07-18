@@ -7,8 +7,6 @@ import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.dto.response.paper.PaperResponse;
 import com.norman.swp391.entity.Author;
 import com.norman.swp391.entity.Paper;
-import com.norman.swp391.entity.PaperAuthor;
-import com.norman.swp391.entity.enums.PaperStatus;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.mapper.AuthorMapper;
 import com.norman.swp391.mapper.PaperMapper;
@@ -17,11 +15,9 @@ import com.norman.swp391.repository.PaperAuthorRepository;
 import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.service.AuthorService;
-import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -67,16 +63,9 @@ public class AuthorServiceImpl implements AuthorService {
  */
     public PageResponse<PaperResponse> getPapersByAuthor(Long authorId, Pageable pageable) {
         authorRepository.findById(authorId).orElseThrow(() -> new ResourceNotFoundException("Author", authorId));
-        List<Paper> papers = paperAuthorRepository.findByAuthorId(authorId).stream()
-                .map(PaperAuthor::getPaper)
-                .filter(p -> p.getStatus() == PaperStatus.ACTIVE)
-                .sorted(Comparator.comparingInt(Paper::getCitationCount).reversed())
-                .toList();
-        int start = (int) pageable.getOffset();
-        int end = Math.min(start + pageable.getPageSize(), papers.size());
-        List<Paper> pageContent = start >= papers.size() ? List.of() : papers.subList(start, end);
-        Page<Paper> page = new PageImpl<>(pageContent, pageable, papers.size());
-        return PageResponse.from(page, PaperMapper.toResponseList(pageContent));
+        Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        Page<Paper> page = paperAuthorRepository.findActivePapersByAuthorId(authorId, unsorted);
+        return PageResponse.from(page, PaperMapper.toResponseList(page.getContent()));
     }
 
     /**

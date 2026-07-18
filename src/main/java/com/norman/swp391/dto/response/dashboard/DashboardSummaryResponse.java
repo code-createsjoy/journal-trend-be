@@ -36,6 +36,7 @@ public class DashboardSummaryResponse {
         private long trendingTopicsCount;
         private String lastSyncStatus;
         private LocalDateTime lastSyncTime;
+        private long papersSynced;
     }
 
     @Getter

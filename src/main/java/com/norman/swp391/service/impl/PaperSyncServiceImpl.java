@@ -127,6 +127,18 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                 .triggeredByAdmin(admin)
                 .build());
 
+        // Evict dashboard summary cache ngay khi sync bắt đầu, để lần xem dashboard tiếp theo
+        // là cache-miss và thấy đúng syncMonitor/duration của lần sync này (không bị đóng băng
+        // theo snapshot cũ tới khi sync kết thúc).
+        try {
+            var cache = cacheManager.getCache("dashboardSummary");
+            if (cache != null) {
+                cache.clear();
+            }
+        } catch (Exception e) {
+            log.error("[SYNC] Failed to evict dashboard cache on sync start", e);
+        }
+
         SyncLogResponse response = SyncLogMapper.toResponse(sync);
         Long syncId = sync.getId();
         Thread vt = Thread.startVirtualThread(() -> executeSync(syncId));
@@ -453,11 +465,6 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             runPostSyncTask("enrichAuthorStats", () -> enrichAuthorStats(50));
             runPostSyncTask("updateJournalImpactFactors",
                     () -> journalService.calculateAndUpdateJournalImpactFactors());
-            runPostSyncTask("evictDashboardCache", () -> {
-                var cache = cacheManager.getCache("dashboardSummary");
-                if (cache != null)
-                    cache.clear();
-            });
 
             // [Fix #2] Check if shutdown was requested during sync — mark appropriately
             if (shutdownRequested) {
@@ -491,6 +498,17 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             sync.setPapersSkipped(Math.max(0, totalPapersFetched - totalPapersInserted));
             sync.setEarlyStopTriggered(globalEarlyStopTriggered);
             syncLogRepository.save(sync);
+
+            // Evict dashboard summary cache upon sync end (both success and failure)
+            try {
+                var cache = cacheManager.getCache("dashboardSummary");
+                if (cache != null) {
+                    cache.clear();
+                    log.info("[SYNC] Dashboard summary cache evicted");
+                }
+            } catch (Exception e) {
+                log.error("[SYNC] Failed to evict dashboard cache", e);
+            }
         }
     }
 

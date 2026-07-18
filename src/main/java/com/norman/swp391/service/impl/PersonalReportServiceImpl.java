@@ -379,29 +379,40 @@ public class PersonalReportServiceImpl implements PersonalReportService {
         // Bubble Chart: Tác giả dẫn đầu
         List<AuthorInfluencePoint> bubbleChart = new ArrayList<>();
         List<Object[]> authorRows = paperAuthorRepository.findTopAuthorsByKeywordIds(keywordIds, PageRequest.of(0, 6));
+
+        // Gom top-keyword-term của tất cả author trước, tra keyword theo batch 1 lần duy nhất
+        // (trước đây gọi keywordRepository.findByTerm() riêng cho từng term -> tới ~60 query phụ/lần load report).
+        Map<Long, List<String>> topTermsByAuthor = new HashMap<>();
+        Set<String> allTerms = new HashSet<>();
+        for (Object[] row : authorRows) {
+            Long authorId = ((Author) row[0]).getId();
+            List<Object[]> topKws = paperKeywordRepository.findTopKeywordsByAuthor(authorId, PageRequest.of(0, 10));
+            List<String> terms = topKws.stream().map(kwRow -> (String) kwRow[0]).toList();
+            topTermsByAuthor.put(authorId, terms);
+            allTerms.addAll(terms);
+        }
+        Set<Long> targetKeywordIds = new HashSet<>(keywordIds);
+        Set<String> overlapTerms = allTerms.isEmpty()
+                ? Set.of()
+                : keywordRepository.findByTermIn(allTerms).stream()
+                        .filter(k -> targetKeywordIds.contains(k.getKeywordId()))
+                        .map(Keyword::getTerm)
+                        .collect(Collectors.toSet());
+
         for (Object[] row : authorRows) {
             Author author = (Author) row[0];
             Long count = (Long) row[1];
-            
-            // Tính số lượng từ khóa trùng khớp (matching keyword count) của tác giả với bộ lọc
-            List<Object[]> topKws = paperKeywordRepository.findTopKeywordsByAuthor(author.getId(), PageRequest.of(0, 10));
-            int overlapCount = 0;
-            for (Object[] kwRow : topKws) {
-                String term = (String) kwRow[0];
-                boolean isOverlap = keywordRepository.findByTerm(term)
-                        .map(k -> keywordIds.contains(k.getKeywordId()))
-                        .orElse(false);
-                if (isOverlap) {
-                    overlapCount++;
-                }
-            }
+
+            long overlapCount = topTermsByAuthor.getOrDefault(author.getId(), List.of()).stream()
+                    .filter(overlapTerms::contains)
+                    .count();
 
             bubbleChart.add(AuthorInfluencePoint.builder()
                     .authorId(author.getId())
                     .authorName(author.getName())
                     .paperCount(count)
                     .mainDomain(author.getAffiliation() != null ? author.getAffiliation() : "Academic Institute")
-                    .matchingKeywordCount(Math.max(overlapCount, 1))
+                    .matchingKeywordCount((int) Math.max(overlapCount, 1))
                     .hIndex(author.getHIndex())
                     .citationCount(author.getCitationCount())
                     .build());

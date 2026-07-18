@@ -18,6 +18,26 @@ public interface CollectionPaperRepository extends JpaRepository<CollectionPaper
      */
     List<CollectionPaper> findByCollectionIdOrderBySavedAtDesc(Long collectionId);
 
+    /** Đếm số paper trong 1 collection bằng COUNT thay vì load hết rồi .size(). */
+    long countByCollectionId(Long collectionId);
+
+    /** Đếm số paper theo nhiều collection cùng lúc (batch) — tránh N+1 khi hiển thị danh sách collection. */
+    @Query("""
+        SELECT cp.collection.id, COUNT(cp)
+        FROM CollectionPaper cp
+        WHERE cp.collection.id IN :collectionIds
+        GROUP BY cp.collection.id
+        """)
+    List<Object[]> countByCollectionIdIn(@Param("collectionIds") java.util.Collection<Long> collectionIds);
+
+    /** Lấy toàn bộ liên kết paper của nhiều collection cùng lúc (batch) — tránh N+1. */
+    @Query("""
+        SELECT cp FROM CollectionPaper cp JOIN FETCH cp.paper
+        WHERE cp.collection.id IN :collectionIds
+        ORDER BY cp.savedAt DESC
+        """)
+    List<CollectionPaper> findByCollectionIdInOrderBySavedAtDesc(@Param("collectionIds") java.util.Collection<Long> collectionIds);
+
     /**
      * Tìm liên kết theo collection và paper.
      */

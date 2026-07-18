@@ -29,7 +29,9 @@ import jakarta.persistence.Index;
 @Table(name = "papers", indexes = {
     @Index(name = "idx_paper_source", columnList = "source_type, source_identifier"),
     @Index(name = "idx_paper_doi", columnList = "doi"),
-    @Index(name = "idx_paper_source_identifier", columnList = "source_identifier")
+    @Index(name = "idx_paper_source_identifier", columnList = "source_identifier"),
+    @Index(name = "idx_papers_status_date", columnList = "status, review_status, publication_date DESC"),
+    @Index(name = "idx_papers_status_citations", columnList = "status, review_status, citation_count DESC")
 })
 @Getter
 @Setter
