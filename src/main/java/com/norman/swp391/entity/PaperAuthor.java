@@ -5,6 +5,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -17,7 +18,8 @@ import lombok.Setter;
 @Entity
 @Table(
         name = "paper_authors",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"paper_id", "author_id"}))
+        uniqueConstraints = @UniqueConstraint(columnNames = {"paper_id", "author_id"}),
+        indexes = @Index(name = "idx_paper_authors_author_id", columnList = "author_id"))
 @Getter
 @Setter
 @NoArgsConstructor

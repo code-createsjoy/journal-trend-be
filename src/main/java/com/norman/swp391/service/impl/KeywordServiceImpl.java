@@ -14,6 +14,7 @@ import com.norman.swp391.service.KeywordTrendService;
 import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,9 +28,18 @@ public class KeywordServiceImpl implements KeywordService {
 
     /** Lấy toàn bộ keyword trong hệ thống. */
     @Override
+    @Cacheable("allKeywords")
     @Transactional(readOnly = true)
     public List<KeywordResponse> listAll() {
         return KeywordMapper.toResponseList(keywordRepository.findAll());
+    }
+
+    /** Danh sách domain duy nhất — dùng cho dropdown filter category ở FE, nhẹ hơn nhiều so với load full keyword list. */
+    @Override
+    @Cacheable("keywordDomains")
+    @Transactional(readOnly = true)
+    public List<String> listDomains() {
+        return keywordRepository.findDistinctDomains();
     }
 
     /** Lấy 1 keyword theo id. */

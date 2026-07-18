@@ -13,6 +13,7 @@ import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.service.PaperService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,8 +26,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.time.LocalDate;
-import java.util.Comparator;
 
 /**
  * Triển khai dịch vụ bài báo.
@@ -152,13 +151,9 @@ public class PaperServiceImpl implements PaperService {
 
     /** Danh sách các năm xuất bản đang có trong hệ thống (để đổ vào dropdown filter năm ở FE). */
     @Override
+    @Cacheable("availableYears")
     @Transactional(readOnly = true)
     public List<Integer> getAvailableYears() {
-        return paperRepository.findAllPublicationDates(PaperStatus.ACTIVE)
-                .stream()
-                .map(LocalDate::getYear)
-                .distinct()
-                .sorted(Comparator.reverseOrder())
-                .toList();
+        return paperRepository.findDistinctPublicationYears();
     }
 }

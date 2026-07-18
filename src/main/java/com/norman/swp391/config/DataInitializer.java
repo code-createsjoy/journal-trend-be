@@ -10,18 +10,22 @@ import com.norman.swp391.repository.ApiSourceConfigRepository;
 import com.norman.swp391.repository.JournalRepository;
 import com.norman.swp391.repository.PaperRepository;
 import com.norman.swp391.repository.UserRepository;
+import com.norman.swp391.service.DashboardService;
 import com.norman.swp391.service.JournalService;
+import com.norman.swp391.service.KeywordService;
+import com.norman.swp391.service.PaperService;
 import com.norman.swp391.service.PaperSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -38,6 +42,11 @@ public class DataInitializer implements CommandLineRunner {
     private static final String HELIX_ADMIN_EMAIL = "admin@helix.io";
     private static final String HELIX_ADMIN_PASSWORD = "admin12345";
 
+    /** Trì hoãn backfill journal sau khi app khởi động xong, tránh làm chậm/timeout lúc start. */
+    private static final long BACKFILL_DELAY_MS = 45_000;
+    /** Kích thước mỗi batch khi backfill journal_ref, tránh load toàn bộ bảng papers cùng lúc. */
+    private static final int BACKFILL_BATCH_SIZE = 300;
+
     private final UserRepository userRepository;
     private final PaperRepository paperRepository;
     private final JournalRepository journalRepository;
@@ -46,6 +55,9 @@ public class DataInitializer implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
     private final PaperSyncService paperSyncService;
     private final AppProperties appProperties;
+    private final DashboardService dashboardService;
+    private final PaperService paperService;
+    private final KeywordService keywordService;
 
     /**
      * Seed tài khoản, API sources và backfill journal khi khởi động.
@@ -55,7 +67,20 @@ public class DataInitializer implements CommandLineRunner {
         seedSuperAdmin();
         seedHelixAdmin();
         seedApiSources();
-        backfillJournalsFromPapers();
+
+        Thread.startVirtualThread(() -> {
+            try {
+                Thread.sleep(BACKFILL_DELAY_MS);
+                backfillJournalsFromPapers();
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            } catch (Exception ex) {
+                log.warn("Journal backfill failed (non-fatal): {}", ex.getMessage());
+            }
+        });
+
+        Thread.startVirtualThread(this::warmUpCaches);
+
         if (appProperties.getSync().isOnStartup() && paperRepository.countByStatus(PaperStatus.ACTIVE) == 0) {
             log.info("Scheduling initial metadata sync in background (OpenAlex + enrichment)…");
             Thread.startVirtualThread(() -> {
@@ -69,6 +94,23 @@ public class DataInitializer implements CommandLineRunner {
                     log.warn("Startup sync failed (app can still run; trigger sync from Admin): {}", ex.getMessage());
                 }
             });
+        }
+    }
+
+    /**
+     * Nạp trước dữ liệu vào Spring Cache ngay sau khi app sẵn sàng, để request đầu tiên
+     * của user không phải chờ tính toán lại dashboard/năm xuất bản/domain keyword.
+     */
+    private void warmUpCaches() {
+        try {
+            dashboardService.getDashboardSummary(false);
+            dashboardService.getDashboardSummary(true);
+            paperService.getAvailableYears();
+            keywordService.listDomains();
+            keywordService.listAll();
+            log.info("Cache warm-up completed (dashboardSummary, availableYears, keywordDomains)");
+        } catch (Exception ex) {
+            log.warn("Cache warm-up failed (non-fatal): {}", ex.getMessage());
         }
     }
 
@@ -154,38 +196,40 @@ public class DataInitializer implements CommandLineRunner {
 /**
  * Xử lý nghiệp vụ: backfillJournalsFromPapers.
  */
-    @Transactional
     protected void backfillJournalsFromPapers() {
         Map<String, Journal> journalCache = new HashMap<>();
         journalRepository.findAll().forEach(j -> journalCache.putIfAbsent(normalizeJournalKey(j.getName()), j));
 
         int linked = 0;
         int skipped = 0;
-        for (var row : paperRepository.findAllForJournalBackfill()) {
-            if (row.getJournalRefId() != null || !StringUtils.hasText(row.getJournal())) {
-                continue;
-            }
-            String name = row.getJournal().trim();
-            String key = normalizeJournalKey(name);
-            try {
-                Journal journal = journalCache.get(key);
-                if (journal == null) {
-                    journal = journalService.findOrCreate(name, null, "General");
-                    if (journal != null && journal.getId() != null) {
-                        journalCache.put(key, journal);
+        long lastId = 0L;
+        List<PaperRepository.PaperJournalBackfillRow> batch;
+        do {
+            batch = paperRepository.findPendingForJournalBackfill(lastId, PageRequest.of(0, BACKFILL_BATCH_SIZE));
+            for (var row : batch) {
+                lastId = row.getId();
+                String name = row.getJournal().trim();
+                String key = normalizeJournalKey(name);
+                try {
+                    Journal journal = journalCache.get(key);
+                    if (journal == null) {
+                        journal = journalService.findOrCreate(name, null, "General");
+                        if (journal != null && journal.getId() != null) {
+                            journalCache.put(key, journal);
+                        }
                     }
-                }
-                if (journal == null || journal.getId() == null) {
+                    if (journal == null || journal.getId() == null) {
+                        skipped++;
+                        continue;
+                    }
+                    linked += paperRepository.linkJournal(row.getId(), journal.getId());
+                } catch (Exception ex) {
                     skipped++;
-                    continue;
+                    journalRepository.findByNameIgnoreCase(name).ifPresent(j -> journalCache.put(key, j));
+                    log.debug("Skipped journal link for paper id={}: {}", row.getId(), ex.getMessage());
                 }
-                linked += paperRepository.linkJournal(row.getId(), journal.getId());
-            } catch (Exception ex) {
-                skipped++;
-                journalRepository.findByNameIgnoreCase(name).ifPresent(j -> journalCache.put(key, j));
-                log.debug("Skipped journal link for paper id={}: {}", row.getId(), ex.getMessage());
             }
-        }
+        } while (batch.size() == BACKFILL_BATCH_SIZE);
         if (linked > 0) {
             log.info("Backfilled journal_ref for {} paper(s)", linked);
         }

@@ -29,6 +29,14 @@ public class KeywordController {
     }
 
     /**
+     * Danh sách domain duy nhất — dùng cho dropdown filter category ở FE (nhẹ hơn GET / vốn trả full keyword list).
+     */
+    @GetMapping("/domains")
+    public ApiResponse<List<String>> listDomains() {
+        return ApiResponse.ok(keywordService.listDomains());
+    }
+
+    /**
      * Xử lý API getTrending.
      */
     @GetMapping("/trending")

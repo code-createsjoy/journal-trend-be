@@ -108,44 +108,44 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
             SELECT p FROM Paper p
             WHERE p.status = :status
               AND p.reviewStatus = :reviewStatus
-              AND (:q IS NULL OR 
+              AND (:q IS NULL OR
                    (COALESCE(:searchType, '') = '' AND (
                        LOWER(p.title) LIKE LOWER(CONCAT('%', :q, '%'))
                        OR LOWER(p.abstractText) LIKE LOWER(CONCAT('%', :q, '%'))
                        OR LOWER(p.doi) LIKE LOWER(CONCAT('%', :q, '%'))
                        OR LOWER(p.journal) LIKE LOWER(CONCAT('%', :q, '%'))
-                       OR p.id IN (
-                           SELECT DISTINCT pk.paper.id FROM PaperKeyword pk
-                           WHERE LOWER(pk.keyword.term) LIKE LOWER(CONCAT('%', :q, '%'))
+                       OR EXISTS (
+                           SELECT 1 FROM PaperKeyword pk
+                           WHERE pk.paper = p AND LOWER(pk.keyword.term) LIKE LOWER(CONCAT('%', :q, '%'))
                        )
-                       OR p.id IN (
-                           SELECT DISTINCT pa.paper.id FROM PaperAuthor pa
-                           WHERE LOWER(pa.author.name) LIKE LOWER(CONCAT('%', :q, '%'))
+                       OR EXISTS (
+                           SELECT 1 FROM PaperAuthor pa
+                           WHERE pa.paper = p AND LOWER(pa.author.name) LIKE LOWER(CONCAT('%', :q, '%'))
                        )
                    )) OR
                    (:searchType = 'papers' AND LOWER(p.title) LIKE LOWER(CONCAT('%', :q, '%'))) OR
-                   (:searchType = 'authors' AND p.id IN (
-                       SELECT DISTINCT pa.paper.id FROM PaperAuthor pa
-                       WHERE LOWER(pa.author.name) LIKE LOWER(CONCAT('%', :q, '%'))
+                   (:searchType = 'authors' AND EXISTS (
+                       SELECT 1 FROM PaperAuthor pa
+                       WHERE pa.paper = p AND LOWER(pa.author.name) LIKE LOWER(CONCAT('%', :q, '%'))
                    )) OR
-                   (:searchType = 'keywords' AND p.id IN (
-                       SELECT DISTINCT pk.paper.id FROM PaperKeyword pk
-                       WHERE LOWER(pk.keyword.term) = LOWER(:q)
+                   (:searchType = 'keywords' AND EXISTS (
+                       SELECT 1 FROM PaperKeyword pk
+                       WHERE pk.paper = p AND LOWER(pk.keyword.term) = LOWER(:q)
                    ))
                   )
-              AND (:keywordId IS NULL OR p.id IN (
-                  SELECT DISTINCT pk2.paper.id FROM PaperKeyword pk2
-                  WHERE pk2.keyword.keywordId = :keywordId
+              AND (:keywordId IS NULL OR EXISTS (
+                  SELECT 1 FROM PaperKeyword pk2
+                  WHERE pk2.paper = p AND pk2.keyword.keywordId = :keywordId
               ))
-              AND (:authorId IS NULL OR p.id IN (
-                  SELECT DISTINCT pa2.paper.id FROM PaperAuthor pa2
-                  WHERE pa2.author.id = :authorId
+              AND (:authorId IS NULL OR EXISTS (
+                  SELECT 1 FROM PaperAuthor pa2
+                  WHERE pa2.paper = p AND pa2.author.id = :authorId
               ))
               AND (:fromYear IS NULL OR YEAR(p.publicationDate) >= :fromYear)
               AND (:toYear IS NULL OR YEAR(p.publicationDate) <= :toYear)
-              AND (:category IS NULL OR p.id IN (
-                  SELECT DISTINCT pk3.paper.id FROM PaperKeyword pk3
-                  WHERE LOWER(pk3.keyword.domain) = LOWER(:category)
+              AND (:category IS NULL OR EXISTS (
+                  SELECT 1 FROM PaperKeyword pk3
+                  WHERE pk3.paper = p AND LOWER(pk3.keyword.domain) = LOWER(:category)
               ))
               AND (:minCitations IS NULL OR p.citationCount >= :minCitations)
               AND (:journalId IS NULL OR p.journalRef.id = :journalId)
@@ -224,6 +224,17 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
     List<LocalDate> findAllPublicationDates(@Param("status") PaperStatus status);
 
     /**
+     * Danh sách năm xuất bản distinct, tính thẳng ở DB thay vì load hết publicationDate về Java rồi map/distinct.
+     */
+    @Query(value = """
+            SELECT DISTINCT YEAR(publication_date)
+            FROM papers
+            WHERE status = 'ACTIVE' AND publication_date IS NOT NULL
+            ORDER BY 1 DESC
+            """, nativeQuery = true)
+    List<Integer> findDistinctPublicationYears();
+
+    /**
      * Bài cần bổ sung metadata (tóm tắt hoặc tác giả).
      */
     @Query("""
@@ -256,6 +267,20 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
             FROM Paper p
             """)
     List<PaperJournalBackfillRow> findAllForJournalBackfill();
+
+    /**
+     * Bài chưa gắn journal_ref, phân trang theo id (keyset pagination) để backfill theo batch.
+     * Dùng "id > :lastId" thay vì OFFSET vì các dòng đã link trong batch trước sẽ biến mất khỏi
+     * điều kiện WHERE journalRef IS NULL — OFFSET-based paging sẽ bỏ sót dòng khi tập kết quả co lại
+     * giữa các lần gọi; keyset theo id (đơn điệu tăng, không đổi) không bị ảnh hưởng bởi việc đó.
+     */
+    @Query("""
+            SELECT p.id as id, p.journal as journal, p.journalRef.id as journalRefId
+            FROM Paper p
+            WHERE p.journalRef IS NULL AND p.journal IS NOT NULL AND TRIM(p.journal) <> '' AND p.id > :lastId
+            ORDER BY p.id ASC
+            """)
+    List<PaperJournalBackfillRow> findPendingForJournalBackfill(@Param("lastId") Long lastId, Pageable pageable);
 
     @Modifying
     @Query(value = "UPDATE papers SET journal_id = :journalId WHERE id = :paperId", nativeQuery = true)

@@ -71,6 +71,8 @@ public class DashboardServiceImpl implements DashboardService {
         SyncLog lastLog = recentLogs.isEmpty() ? null : recentLogs.get(0);
         String lastSyncStatus = lastLog != null ? lastLog.getStatus().name() : "N/A";
         LocalDateTime lastSyncTime = lastLog != null ? lastLog.getStartedAt() : null;
+        // Chỉ Admin/Super Admin mới thấy số paper đã sync (isAdmin đã có sẵn trong tham số method)
+        long papersSynced = (isAdmin && lastLog != null) ? lastLog.getPapersFetched() : 0;
 
         KpiCardsDto kpi = KpiCardsDto.builder()
                 .totalPapers(totalPapers)
@@ -80,6 +82,7 @@ public class DashboardServiceImpl implements DashboardService {
                 .trendingTopicsCount(trendingTopicsCount)
                 .lastSyncStatus(lastSyncStatus)
                 .lastSyncTime(lastSyncTime)
+                .papersSynced(papersSynced)
                 .build();
 
         // 2. Top 10 Trending Topics
@@ -184,8 +187,12 @@ public class DashboardServiceImpl implements DashboardService {
         SyncMonitorDto syncMonitor = null;
         if (isAdmin && lastLog != null) {
             long duration = 0;
-            if (lastLog.getStartedAt() != null && lastLog.getFinishedAt() != null) {
-                duration = Duration.between(lastLog.getStartedAt(), lastLog.getFinishedAt()).toSeconds();
+            if (lastLog.getStartedAt() != null) {
+                if (lastLog.getFinishedAt() != null) {
+                    duration = Duration.between(lastLog.getStartedAt(), lastLog.getFinishedAt()).toSeconds();
+                } else if (lastLog.getStatus() == SyncStatus.RUNNING) {
+                    duration = Duration.between(lastLog.getStartedAt(), LocalDateTime.now()).toSeconds();
+                }
             }
             syncMonitor = SyncMonitorDto.builder()
                     .lastSyncTime(lastLog.getStartedAt())

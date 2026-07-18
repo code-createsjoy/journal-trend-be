@@ -184,15 +184,26 @@ public class HelixApiService {
     @Transactional(readOnly = true)
     public List<HelixAuthor> listFeaturedAuthors(int limit) {
         int size = Math.max(1, Math.min(limit, 50));
-        return authorService.getFeatured(PageRequest.of(0, size)).getContent().stream()
+        List<AuthorResponse> authors = authorService.getFeatured(PageRequest.of(0, size)).getContent();
+        Map<Long, Integer> paperCounts = batchAuthorPaperCounts(authors.stream().map(AuthorResponse::getId).toList());
+        return authors.stream()
                 .map(a -> new HelixAuthor(
                         String.valueOf(a.getId()),
                         a.getName(),
                         a.getAffiliation() != null ? a.getAffiliation() : "",
-                        (int) paperAuthorRepository.countByAuthorId(a.getId()),
+                        paperCounts.getOrDefault(a.getId(), 0),
                         a.getCitationCount(),
                         a.getHIndex() != null ? a.getHIndex() : estimateHIndex(a.getCitationCount())))
                 .toList();
+    }
+
+    /** Đếm số paper theo nhiều author cùng lúc (batch) — tránh N+1 khi map danh sách author sang HelixAuthor. */
+    private Map<Long, Integer> batchAuthorPaperCounts(List<Long> authorIds) {
+        if (authorIds.isEmpty()) {
+            return Map.of();
+        }
+        return paperAuthorRepository.countByAuthorIdIn(authorIds).stream()
+                .collect(Collectors.toMap(row -> (Long) row[0], row -> ((Long) row[1]).intValue()));
     }
 
     /**
@@ -255,12 +266,14 @@ public class HelixApiService {
             authorPage = authorRepository.findAllAuthors(q, pageable);
         }
 
-        List<HelixAuthor> helixAuthors = authorPage.getContent().stream()
+        List<Author> authorsContent = authorPage.getContent();
+        Map<Long, Integer> paperCounts = batchAuthorPaperCounts(authorsContent.stream().map(Author::getId).toList());
+        List<HelixAuthor> helixAuthors = authorsContent.stream()
                 .map(a -> new HelixAuthor(
                         String.valueOf(a.getId()),
                         a.getName(),
                         a.getAffiliation() != null ? a.getAffiliation() : "",
-                        (int) paperAuthorRepository.countByAuthorId(a.getId()),
+                        paperCounts.getOrDefault(a.getId(), 0),
                         a.getCitationCount(),
                         a.getHIndex() != null ? a.getHIndex() : estimateHIndex(a.getCitationCount())))
                 .toList();
@@ -426,12 +439,15 @@ public class HelixApiService {
                         k.getDomain() != null ? k.getDomain() : "Research"))
                 .toList();
 
-        List<HelixAuthor> helixAuthors = authorsPage.getContent().stream()
+        List<AuthorResponse> spotlightAuthors = authorsPage.getContent();
+        Map<Long, Integer> spotlightPaperCounts =
+                batchAuthorPaperCounts(spotlightAuthors.stream().map(AuthorResponse::getId).toList());
+        List<HelixAuthor> helixAuthors = spotlightAuthors.stream()
                 .map(a -> new HelixAuthor(
                         String.valueOf(a.getId()),
                         a.getName(),
                         a.getAffiliation() != null ? a.getAffiliation() : "",
-                        (int) paperAuthorRepository.countByAuthorId(a.getId()),
+                        spotlightPaperCounts.getOrDefault(a.getId(), 0),
                         a.getCitationCount(),
                         a.getHIndex() != null ? a.getHIndex() : estimateHIndex(a.getCitationCount())))
                 .toList();
@@ -497,8 +513,22 @@ public class HelixApiService {
      * Liệt kê các bộ sưu tập của người dùng hiện tại.
      */
     public List<HelixCollection> listCollections() {
-        return collectionService.listForCurrentUser().stream()
-                .map(c -> toHelixCollection(c.getId()))
+        List<CollectionResponse> collections = collectionService.listForCurrentUser();
+        if (collections.isEmpty()) {
+            return List.of();
+        }
+        List<Long> ids = collections.stream().map(CollectionResponse::getId).toList();
+        Map<Long, List<String>> paperIdsByCollection = collectionPaperRepository
+                .findByCollectionIdInOrderBySavedAtDesc(ids).stream()
+                .collect(Collectors.groupingBy(
+                        cp -> cp.getCollection().getId(),
+                        Collectors.mapping(cp -> String.valueOf(cp.getPaper().getId()), Collectors.toList())));
+        return collections.stream()
+                .map(c -> new HelixCollection(
+                        String.valueOf(c.getId()),
+                        c.getName(),
+                        paperIdsByCollection.getOrDefault(c.getId(), List.of()),
+                        c.getCreatedAt() != null ? c.getCreatedAt().toString() : ""))
                 .toList();
     }
 

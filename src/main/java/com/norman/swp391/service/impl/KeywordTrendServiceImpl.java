@@ -202,9 +202,10 @@ public class KeywordTrendServiceImpl implements KeywordTrendService {
         YearMonth target = resolveTargetMonth(year, month);
         List<PublicationTrend> trends = publicationTrendRepository.findByYearAndMonth(
                 target.getYear(), target.getMonthValue());
+        int minKeywordPapers = Math.max(1, appProperties.getSync().getMinKeywordPapers());
 
         List<PublicationTrend> sorted = trends.stream()
-                .filter(t -> t.getKeyword() != null)
+                .filter(t -> t.getKeyword() != null && t.getPaperCount() >= minKeywordPapers)
                 .sorted(Comparator.comparing(PublicationTrend::getDeltaPercent,
                                 Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(PublicationTrend::getPaperCount, Comparator.reverseOrder()))

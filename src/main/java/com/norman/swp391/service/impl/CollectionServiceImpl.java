@@ -28,6 +28,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Triển khai dịch vụ bộ sưu tập.
@@ -49,10 +50,17 @@ public class CollectionServiceImpl implements CollectionService {
  */
     public List<CollectionResponse> listForCurrentUser() {
         Long userId = requireUserId();
-        return collectionRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(c -> CollectionMapper.toResponse(
-                        c, collectionPaperRepository.findByCollectionIdOrderBySavedAtDesc(c.getId()).size()))
+        List<PaperCollection> collections = collectionRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        if (collections.isEmpty()) {
+            return List.of();
+        }
+        List<Long> ids = collections.stream().map(PaperCollection::getId).toList();
+        Map<Long, Integer> countsById = collectionPaperRepository.countByCollectionIdIn(ids).stream()
+                .collect(java.util.stream.Collectors.toMap(row -> (Long) row[0], row -> ((Long) row[1]).intValue()));
+        List<Integer> paperCounts = collections.stream()
+                .map(c -> countsById.getOrDefault(c.getId(), 0))
                 .toList();
+        return CollectionMapper.toResponseList(collections, paperCounts);
     }
 
     @Override
@@ -62,7 +70,7 @@ public class CollectionServiceImpl implements CollectionService {
  */
     public CollectionResponse getById(Long id) {
         PaperCollection collection = getOwnedCollection(id);
-        int count = collectionPaperRepository.findByCollectionIdOrderBySavedAtDesc(id).size();
+        int count = (int) collectionPaperRepository.countByCollectionId(id);
         return CollectionMapper.toResponse(collection, count);
     }
 
@@ -97,7 +105,7 @@ public class CollectionServiceImpl implements CollectionService {
         collection.setName(request.getName().trim());
         collection.setDescription(request.getDescription());
         collection = collectionRepository.save(collection);
-        int count = collectionPaperRepository.findByCollectionIdOrderBySavedAtDesc(id).size();
+        int count = (int) collectionPaperRepository.countByCollectionId(id);
         return CollectionMapper.toResponse(collection, count);
     }
 
@@ -137,7 +145,7 @@ public class CollectionServiceImpl implements CollectionService {
                     .savedAt(LocalDateTime.now())
                     .build());
         }
-        int count = collectionPaperRepository.findByCollectionIdOrderBySavedAtDesc(collectionId).size();
+        int count = (int) collectionPaperRepository.countByCollectionId(collectionId);
         return CollectionMapper.toResponse(collection, count);
     }
 
