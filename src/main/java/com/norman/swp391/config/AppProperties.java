@@ -138,6 +138,10 @@ public class AppProperties {
         private int pendingReviewExpiryDays = 30;
         /** BR-70: số ngày giữ notification trước khi tự động xóa. */
         private int notificationRetentionDays = 90;
+        /** Số ngày giữ đơn xin đổi role còn PENDING trước khi tự động xóa (chưa ai duyệt). */
+        private int roleRequestPendingRetentionDays = 30;
+        /** Số ngày giữ đơn xin đổi role đã APPROVED/REJECTED trước khi tự động xóa. */
+        private int roleRequestReviewedRetentionDays = 7;
         /** Sau sync/recalculate: backfill bao nhiêu tháng trend (0 = tắt). */
         private int trendBackfillMonths = 12;
         /** Number of overlap days for safer incremental sync. */

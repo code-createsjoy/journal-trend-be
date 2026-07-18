@@ -118,6 +118,8 @@ app:
     anomaly-threshold-percent: ${ANOMALY_THRESHOLD_PERCENT:300}
     pending-review-expiry-days: ${PENDING_REVIEW_EXPIRY_DAYS:30}
     notification-retention-days: ${NOTIFICATION_RETENTION_DAYS:90}
+    role-request-pending-retention-days: ${ROLE_REQUEST_PENDING_RETENTION_DAYS:30}
+    role-request-reviewed-retention-days: ${ROLE_REQUEST_REVIEWED_RETENTION_DAYS:7}
     trend-backfill-months: ${TREND_BACKFILL_MONTHS:12}
     overlap-days: ${SYNC_OVERLAP_DAYS:7}
     early-stopping-enabled: ${SYNC_EARLY_STOPPING:true}

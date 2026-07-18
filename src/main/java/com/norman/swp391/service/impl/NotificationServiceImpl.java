@@ -15,6 +15,8 @@ import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.User;
 import com.norman.swp391.entity.enums.NotificationReadStatus;
 import com.norman.swp391.entity.enums.NotificationTriggerType;
+import com.norman.swp391.entity.enums.RoleRequestRejectionReason;
+import com.norman.swp391.entity.enums.UserRole;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.mapper.NotificationMapper;
@@ -391,6 +393,32 @@ public class NotificationServiceImpl implements NotificationService {
         if (deleted > 0) {
             log.info("[NOTIF_PURGE] Deleted {} notification(s) older than {} days", deleted, retentionDays);
         }
+    }
+
+    /** Thông báo đơn xin đổi role đã được duyệt. */
+    @Override
+    @Transactional
+    public void notifyRoleRequestApproved(User targetUser, UserRole newRole) {
+        notificationRepository.save(Notification.builder()
+                .user(targetUser)
+                .message("Your role upgrade request has been approved. Your new role is " + newRole.name() + ".")
+                .triggerType(NotificationTriggerType.SYSTEM)
+                .readStatus(NotificationReadStatus.UNREAD)
+                .createdAt(LocalDateTime.now())
+                .build());
+    }
+
+    /** Thông báo đơn xin đổi role bị từ chối, kèm lý do (tiếng Anh, chọn từ dropdown cố định). */
+    @Override
+    @Transactional
+    public void notifyRoleRequestRejected(User targetUser, RoleRequestRejectionReason rejectionReason) {
+        notificationRepository.save(Notification.builder()
+                .user(targetUser)
+                .message("Your role upgrade request has been rejected. Reason: " + rejectionReason.getDescription())
+                .triggerType(NotificationTriggerType.SYSTEM)
+                .readStatus(NotificationReadStatus.UNREAD)
+                .createdAt(LocalDateTime.now())
+                .build());
     }
 
     /** Lấy userId của user đang đăng nhập, throw nếu chưa xác thực. */
