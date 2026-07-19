@@ -133,7 +133,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
             toSave.add(FutureTrendForecast.builder()
                 .keyword(m.keyword())
                 .potentialScore(bd(sTPS, 2))
-                .predictedPapers6m(predictedTotal)
+                .predictedPapersTotal(predictedTotal)
                 .predictedGrowthRate(bd(growthRate, 2))
                 .forecastReason(category)
                 .forecastMonthsJson(toJson(forecastMonths))
@@ -155,30 +155,44 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
         log.info("[ForecastJob] Completed: {} keywords forecasted", toSave.size());
     }
 
-    /** Lấy top N keyword có điểm dự báo (potentialScore) cao nhất — kết quả đã tính sẵn từ runForecastJob. */
+    /**
+     * Lấy top N keyword có điểm dự báo (potentialScore) cao nhất — kết quả đã tính sẵn từ runForecastJob.
+     * Cắt dự báo theo {@code months} (1-12): tính lại predictedPapers + predictedGrowthRate theo số tháng đó.
+     */
     @Override
     @Transactional(readOnly = true)
-    public List<ForecastListResponse> getTopForecasts(int limit) {
+    public List<ForecastListResponse> getTopForecasts(int limit, int months) {
+        int m = normalizeMonths(months);
         int size = Math.max(1, Math.min(limit, 100));
         return forecastRepository.findTopByScore(PageRequest.of(0, size))
             .stream()
-            .map(f -> ForecastListResponse.builder()
-                .keywordId(f.getKeyword().getKeywordId())
-                .term(f.getKeyword().getTerm())
-                .domain(f.getKeyword().getDomain())
-                .potentialScore(f.getPotentialScore())
-                .predictedPapers6m(f.getPredictedPapers6m())
-                .predictedGrowthRate(f.getPredictedGrowthRate())
-                .forecastReason(f.getForecastReason())
-                .currentPaperCount(f.getKeyword().getPaperCount())
-                .build())
+            .map(f -> {
+                List<ForecastMonthDto> sliced = sliceMonths(fromJson(f.getForecastMonthsJson()), m);
+                int predicted = sliced.stream().mapToInt(ForecastMonthDto::getPaperCount).sum();
+                double current = Math.max(1.0, f.getKeyword().getPaperCount());
+                return ForecastListResponse.builder()
+                    .keywordId(f.getKeyword().getKeywordId())
+                    .term(f.getKeyword().getTerm())
+                    .domain(f.getKeyword().getDomain())
+                    .potentialScore(f.getPotentialScore())          // độc lập với months → giữ nguyên
+                    .predictedPapers(predicted)
+                    .forecastMonthsCount(sliced.size())
+                    .predictedGrowthRate(bd(predicted / current * 100.0, 2))
+                    .forecastReason(f.getForecastReason())          // độc lập với months → giữ nguyên
+                    .currentPaperCount(f.getKeyword().getPaperCount())
+                    .build();
+            })
             .toList();
     }
 
-    /** Chi tiết dự báo của 1 keyword: lịch sử 12 tháng gần nhất + các tháng dự báo tương lai. */
+    /**
+     * Chi tiết dự báo của 1 keyword: lịch sử 12 tháng gần nhất + {@code months} tháng dự báo tương lai.
+     * Cắt mảng forecast theo {@code months} và tính lại predictedPapers + predictedGrowthRate.
+     */
     @Override
     @Transactional(readOnly = true)
-    public ForecastDetailResponse getForecastDetail(Long keywordId) {
+    public ForecastDetailResponse getForecastDetail(Long keywordId, int months) {
+        int m = normalizeMonths(months);
         FutureTrendForecast forecast = forecastRepository.findByKeywordId(keywordId)
             .orElseThrow(() -> new ResourceNotFoundException("No forecast found for keyword: " + keywordId));
 
@@ -191,15 +205,18 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
                 .build())
             .toList();
 
-        List<ForecastMonthDto> forecastMonths = fromJson(forecast.getForecastMonthsJson());
+        List<ForecastMonthDto> forecastMonths = sliceMonths(fromJson(forecast.getForecastMonthsJson()), m);
+        int predicted = forecastMonths.stream().mapToInt(ForecastMonthDto::getPaperCount).sum();
+        double current = Math.max(1.0, forecast.getKeyword().getPaperCount());
 
         return ForecastDetailResponse.builder()
             .keywordId(forecast.getKeyword().getKeywordId())
             .term(forecast.getKeyword().getTerm())
             .domain(forecast.getKeyword().getDomain())
             .potentialScore(forecast.getPotentialScore())
-            .predictedPapers6m(forecast.getPredictedPapers6m())
-            .predictedGrowthRate(forecast.getPredictedGrowthRate())
+            .predictedPapers(predicted)
+            .forecastMonthsCount(forecastMonths.size())
+            .predictedGrowthRate(bd(predicted / current * 100.0, 2))
             .forecastReason(forecast.getForecastReason())
             .historicalMonths(historical)
             .forecastMonths(forecastMonths)
@@ -316,6 +333,21 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     // ────────────────────────────────────────────────────────
     // HỖ TRỢ
     // ────────────────────────────────────────────────────────
+
+    /** Số tháng tối đa API có thể trả (khớp horizon precompute). */
+    private static final int MAX_MONTHS = 12;
+
+    /** Kẹp months về [1, 12] — không ném lỗi, giá trị lạ tự về biên gần nhất. */
+    private int normalizeMonths(int months) {
+        return Math.max(1, Math.min(months, MAX_MONTHS));
+    }
+
+    /** Cắt X tháng đầu từ mảng dự báo đã lưu; clamp thêm nếu mảng ngắn hơn X. */
+    private List<ForecastMonthDto> sliceMonths(List<ForecastMonthDto> all, int months) {
+        int end = Math.min(months, all.size());
+        return all.subList(0, end);
+    }
+
     private BigDecimal bd(double value, int scale) {
         return BigDecimal.valueOf(value).setScale(scale, RoundingMode.HALF_UP);
     }

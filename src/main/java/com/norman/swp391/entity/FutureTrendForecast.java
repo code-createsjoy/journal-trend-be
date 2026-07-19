@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Kết quả dự báo hot topic 6 tháng tới cho mỗi keyword.
+ * Kết quả dự báo hot topic (tối đa forecastHorizon tháng tới) cho mỗi keyword.
  * Tính lại định kỳ bởi {@code FutureTrendForecastScheduler}.
  */
 @Entity
@@ -42,8 +42,10 @@ public class FutureTrendForecast {
     @Column(name = "potential_score", nullable = false, precision = 5, scale = 2)
     private BigDecimal potentialScore;
 
+    // Tổng số bài dự báo cho toàn bộ horizon đã precompute (forecastHorizon tháng).
+    // Cột DB giữ tên cũ predicted_papers_6m để tránh migration; API tính lại theo tham số months.
     @Column(name = "predicted_papers_6m", nullable = false)
-    private int predictedPapers6m;
+    private int predictedPapersTotal;
 
     @Column(name = "predicted_growth_rate", nullable = false, precision = 10, scale = 2)
     private BigDecimal predictedGrowthRate;

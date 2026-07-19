@@ -161,8 +161,8 @@ public class AppProperties {
         private int forecastMinMonths = 6;
         /** Số tháng lịch sử tối đa dùng cho hồi quy / biểu đồ. */
         private int forecastHistoryWindow = 12;
-        /** Số tháng dự báo về phía trước. */
-        private int forecastHorizon = 6;
+        /** Số tháng dự báo về phía trước (pre-compute tối đa để API cắt theo tham số months). */
+        private int forecastHorizon = 12;
         /** Số keyword tối đa lưu vào bảng forecast. */
         private int forecastMaxKeywords = 200;
         /** Trọng số slope trong sTPS (mặc định 0.5). */
