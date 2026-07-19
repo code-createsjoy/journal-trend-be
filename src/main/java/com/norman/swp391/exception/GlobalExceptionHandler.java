@@ -39,6 +39,15 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Chưa xác thực (chưa đăng nhập / token hết hạn) — luôn trả 401, thống nhất cho FE dựa vào
+     * để kích hoạt luồng refresh token, không lẫn với lỗi 400 (dữ liệu sai) thông thường.
+     */
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnauthorized(UnauthorizedException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error(ex.getMessage()));
+    }
+
+    /**
      * Thực hiện handleValidation.
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)

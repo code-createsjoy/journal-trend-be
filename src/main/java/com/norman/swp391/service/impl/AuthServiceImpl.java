@@ -20,6 +20,7 @@ import com.norman.swp391.entity.enums.UserRole;
 import com.norman.swp391.entity.enums.UserStatus;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
+import com.norman.swp391.exception.UnauthorizedException;
 import com.norman.swp391.mapper.UserMapper;
 import com.norman.swp391.repository.PasswordHistoryRepository;
 import com.norman.swp391.repository.PasswordResetTokenRepository;
@@ -223,7 +224,7 @@ public class AuthServiceImpl implements AuthService {
     public void changePassword(ChangePasswordRequest request) {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BadRequestException("Not authenticated");
+            throw new UnauthorizedException("Not authenticated");
         }
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
@@ -244,7 +245,7 @@ public class AuthServiceImpl implements AuthService {
     public UserResponse updateProfile(UpdateProfileRequest request) {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BadRequestException("Not authenticated");
+            throw new UnauthorizedException("Not authenticated");
         }
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
         if (StringUtils.hasText(request.getFullName())) {
@@ -262,7 +263,7 @@ public class AuthServiceImpl implements AuthService {
     public UserResponse updateNotificationPreferences(UpdateNotificationPreferencesRequest request) {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BadRequestException("Not authenticated");
+            throw new UnauthorizedException("Not authenticated");
         }
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
         user.setNotifyKeywords(request.isNotifyKeywords());
@@ -281,7 +282,7 @@ public class AuthServiceImpl implements AuthService {
     public UserResponse getCurrentUser() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BadRequestException("Not authenticated");
+            throw new UnauthorizedException("Not authenticated");
         }
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User", userId));
         return UserMapper.toResponse(user);

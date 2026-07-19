@@ -369,6 +369,16 @@ public class PaperSyncServiceImpl implements PaperSyncService {
                                 break outer;
                             }
 
+                            // OpenAlex đôi khi trả về publication_date/publication_year sai lệch ở tương lai
+                            // (lỗi dữ liệu từ nguồn) — 1 bài đã được index là "đã xuất bản" nên không thể có
+                            // ngày tương lai. Bỏ qua cả bài, không lưu record không đáng tin cậy. Kiểm tra ở
+                            // đây (không phải trong OpenAlexClient) để KHÔNG ảnh hưởng tín hiệu "hết kết quả"
+                            // (batch.isEmpty() ở trên) vốn dùng để đánh dấu keyword COMPLETED.
+                            if (metadata.publicationDate() != null
+                                    && metadata.publicationDate().isAfter(LocalDate.now())) {
+                                continue; // Skip — don't add to ingestBuffer
+                            }
+
                             // [Fix #8] DOI pre-filter — skip already known papers
                             boolean alreadyKnown = false;
                             if (StringUtils.hasText(metadata.doi())

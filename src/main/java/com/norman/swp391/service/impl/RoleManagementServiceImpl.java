@@ -14,6 +14,7 @@ import com.norman.swp391.entity.enums.RoleRequestStatus;
 import com.norman.swp391.entity.enums.UserRole;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
+import com.norman.swp391.exception.UnauthorizedException;
 import com.norman.swp391.mapper.RoleManagementMapper;
 import com.norman.swp391.repository.RoleChangeLogRepository;
 import com.norman.swp391.repository.RoleUpgradeRequestRepository;
@@ -199,7 +200,7 @@ public class RoleManagementServiceImpl implements RoleManagementService {
     private Long requireUserId() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BadRequestException("Not authenticated");
+            throw new UnauthorizedException("Not authenticated");
         }
         return userId;
     }

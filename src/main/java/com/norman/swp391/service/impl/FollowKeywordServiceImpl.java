@@ -7,6 +7,7 @@ import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.User;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
+import com.norman.swp391.exception.UnauthorizedException;
 import com.norman.swp391.mapper.KeywordMapper;
 import com.norman.swp391.repository.FollowKeywordRepository;
 import com.norman.swp391.repository.KeywordRepository;
@@ -75,7 +76,7 @@ public class FollowKeywordServiceImpl implements FollowKeywordService {
     private Long requireUserId() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BadRequestException("Not authenticated");
+            throw new UnauthorizedException("Not authenticated");
         }
         return userId;
     }

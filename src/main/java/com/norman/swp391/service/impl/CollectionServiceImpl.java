@@ -13,6 +13,7 @@ import com.norman.swp391.entity.enums.PaperReviewStatus;
 import com.norman.swp391.entity.enums.PaperStatus;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
+import com.norman.swp391.exception.UnauthorizedException;
 import com.norman.swp391.mapper.CollectionMapper;
 import com.norman.swp391.mapper.PaperMapper;
 import com.norman.swp391.repository.CollectionPaperRepository;
@@ -213,7 +214,7 @@ public class CollectionServiceImpl implements CollectionService {
     private Long requireUserId() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BadRequestException("Not authenticated");
+            throw new UnauthorizedException("Not authenticated");
         }
         return userId;
     }

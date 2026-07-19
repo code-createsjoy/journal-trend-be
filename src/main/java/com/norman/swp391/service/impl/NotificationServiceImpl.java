@@ -19,6 +19,7 @@ import com.norman.swp391.entity.enums.RoleRequestRejectionReason;
 import com.norman.swp391.entity.enums.UserRole;
 import com.norman.swp391.exception.BadRequestException;
 import com.norman.swp391.exception.ResourceNotFoundException;
+import com.norman.swp391.exception.UnauthorizedException;
 import com.norman.swp391.mapper.NotificationMapper;
 import com.norman.swp391.repository.FollowAuthorRepository;
 import com.norman.swp391.repository.FollowJournalRepository;
@@ -425,7 +426,7 @@ public class NotificationServiceImpl implements NotificationService {
     private Long requireUserId() {
         Long userId = SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new BadRequestException("Not authenticated");
+            throw new UnauthorizedException("Not authenticated");
         }
         return userId;
     }
