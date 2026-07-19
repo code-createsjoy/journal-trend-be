@@ -9,8 +9,10 @@ import com.norman.swp391.dto.response.ai.AiTopTrendsAnalysisResponse;
 import com.norman.swp391.dto.response.ai.AiTrendAnalysisResponse;
 import com.norman.swp391.dto.response.keyword.KeywordResponse;
 import com.norman.swp391.dto.response.keyword.KeywordTrendResponse;
+import com.norman.swp391.entity.enums.AiAnalysisType;
 import com.norman.swp391.exception.AiQuotaExhaustedException;
 import com.norman.swp391.exception.BadRequestException;
+import com.norman.swp391.service.AiAnalysisHistoryService;
 import com.norman.swp391.service.AiAnalysisService;
 import com.norman.swp391.service.KeywordService;
 import com.norman.swp391.service.KeywordTrendService;
@@ -36,6 +38,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
     private final KeywordTrendService keywordTrendService;
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper;
+    private final AiAnalysisHistoryService aiAnalysisHistoryService;
     @Qualifier("groqRestClient")
     private final RestClient groqRestClient;
 
@@ -62,7 +65,10 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         String prompt = buildPrompt(keyword.getTerm(), trendData);
         String aiResponseText = callGroq(prompt);
 
-        return parseAiResponse(aiResponseText, keyword.getTerm());
+        AiTrendAnalysisResponse response = parseAiResponse(aiResponseText, keyword.getTerm());
+        aiAnalysisHistoryService.saveHistory(AiAnalysisType.SINGLE_KEYWORD, List.of(response.getKeyword()),
+                response.getVerdict(), response);
+        return response;
     }
 
     /**
@@ -189,7 +195,11 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
         String prompt = buildTopTrendsPrompt(combinedData);
         String aiResponseText = callGroq(prompt);
-        return parseTopTrendsAiResponse(aiResponseText, new ArrayList<>(combinedData.keySet()));
+        AiTopTrendsAnalysisResponse response = parseTopTrendsAiResponse(aiResponseText,
+                new ArrayList<>(combinedData.keySet()));
+        aiAnalysisHistoryService.saveHistory(AiAnalysisType.TOP_TRENDS, response.getAnalyzedKeywords(),
+                response.getOverallVerdict(), response);
+        return response;
     }
 
     /**
