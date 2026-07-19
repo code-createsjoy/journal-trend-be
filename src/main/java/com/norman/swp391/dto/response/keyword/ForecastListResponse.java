@@ -18,7 +18,8 @@ public class ForecastListResponse {
     private String term;
     private String domain;
     private BigDecimal potentialScore;       // sTPS 0-100
-    private int predictedPapers6m;           // tổng bài dự báo 6 tháng
+    private int predictedPapers;             // tổng bài dự báo trong forecastMonthsCount tháng
+    private int forecastMonthsCount;         // số tháng dự báo (1-12)
     private BigDecimal predictedGrowthRate;  // % tăng trưởng
     private String forecastReason;           // ma ForecastCategory: EARLY_BOOM / BREAKOUT / STEADY
     private int currentPaperCount;           // số bài hiện tại

@@ -8,7 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Chi tiết dự báo 1 keyword kèm lịch sử 12 tháng + dự báo 6 tháng tới.
+ * Chi tiết dự báo 1 keyword kèm lịch sử 12 tháng + dự báo N tháng tới (theo tham số months).
  */
 @Data
 @NoArgsConstructor
@@ -19,13 +19,14 @@ public class ForecastDetailResponse {
     private String term;
     private String domain;
     private BigDecimal potentialScore;
-    private int predictedPapers6m;
+    private int predictedPapers;             // tổng bài dự báo trong forecastMonthsCount tháng
+    private int forecastMonthsCount;         // số tháng dự báo (1-12)
     private BigDecimal predictedGrowthRate;
     private String forecastReason;   // ma ForecastCategory: EARLY_BOOM / BREAKOUT / STEADY
 
     // Lịch sử 12 tháng (nét liền trên chart)
     private List<ForecastMonthDto> historicalMonths;
 
-    // Dự báo 6 tháng (nét đứt trên chart)
+    // Dự báo (nét đứt trên chart) — đã cắt theo forecastMonthsCount
     private List<ForecastMonthDto> forecastMonths;
 }

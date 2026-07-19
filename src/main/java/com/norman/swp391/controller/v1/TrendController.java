@@ -43,19 +43,21 @@ public class TrendController {
     @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @GetMapping("/forecast")
     public ApiResponse<List<ForecastListResponse>> getTopForecasts(
-            @RequestParam(defaultValue = "10") int limit) {
-        return ApiResponse.ok(forecastService.getTopForecasts(limit));
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "6") int months) {
+        return ApiResponse.ok(forecastService.getTopForecasts(limit, months));
     }
 
     /**
-     * Chi tiết dự báo 1 keyword kèm lịch sử + 6 tháng tới.
+     * Chi tiết dự báo 1 keyword kèm lịch sử + N tháng tới (tham số months, 1-12).
      * Student không có quyền truy cập.
      */
     @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @GetMapping("/forecast/{keywordId}")
     public ApiResponse<ForecastDetailResponse> getForecastDetail(
-            @PathVariable Long keywordId) {
-        return ApiResponse.ok(forecastService.getForecastDetail(keywordId));
+            @PathVariable Long keywordId,
+            @RequestParam(defaultValue = "6") int months) {
+        return ApiResponse.ok(forecastService.getForecastDetail(keywordId, months));
     }
 
     /**
@@ -65,8 +67,9 @@ public class TrendController {
     @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @PostMapping("/forecast/run")
     public ApiResponse<List<ForecastListResponse>> runForecast(
-            @RequestParam(defaultValue = "10") int limit) {
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(defaultValue = "6") int months) {
         forecastService.runForecastJob();
-        return ApiResponse.ok("Forecast recalculated", forecastService.getTopForecasts(limit));
+        return ApiResponse.ok("Forecast recalculated", forecastService.getTopForecasts(limit, months));
     }
 }
