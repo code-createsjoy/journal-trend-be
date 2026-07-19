@@ -34,7 +34,7 @@ public class HelixReportsController {
             @RequestParam(defaultValue = "ALL") String filterBy) {
         Long userId = com.norman.swp391.security.SecurityUtils.getCurrentUserId();
         if (userId == null) {
-            throw new com.norman.swp391.exception.BadRequestException("Not authenticated");
+            throw new com.norman.swp391.exception.UnauthorizedException("Not authenticated");
         }
         return personalReportService.generatePersonalReport(userId, filterBy);
     }

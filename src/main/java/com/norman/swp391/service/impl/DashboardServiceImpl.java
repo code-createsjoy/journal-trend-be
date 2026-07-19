@@ -72,7 +72,11 @@ public class DashboardServiceImpl implements DashboardService {
         String lastSyncStatus = lastLog != null ? lastLog.getStatus().name() : "N/A";
         LocalDateTime lastSyncTime = lastLog != null ? lastLog.getStartedAt() : null;
         // Chỉ Admin/Super Admin mới thấy số paper đã sync (isAdmin đã có sẵn trong tham số method)
-        long papersSynced = (isAdmin && lastLog != null) ? lastLog.getPapersFetched() : 0;
+        // Dùng papersInserted (số bài MỚI thực sự được lưu) thay vì papersFetched (tổng số bài quét qua,
+        // bao gồm cả bài trùng bị bỏ qua) — tránh hiển thị số liệu ảo cao hơn nhiều so với DB thực tế.
+        long papersSynced = (isAdmin && lastLog != null)
+                ? (lastLog.getPapersInserted() != null ? lastLog.getPapersInserted() : 0)
+                : 0;
 
         KpiCardsDto kpi = KpiCardsDto.builder()
                 .totalPapers(totalPapers)
@@ -197,7 +201,7 @@ public class DashboardServiceImpl implements DashboardService {
             syncMonitor = SyncMonitorDto.builder()
                     .lastSyncTime(lastLog.getStartedAt())
                     .syncStatus(lastLog.getStatus().name())
-                    .papersSynced(lastLog.getPapersFetched())
+                    .papersSynced(lastLog.getPapersInserted() != null ? lastLog.getPapersInserted() : 0)
                     .durationSeconds(duration)
                     .errorMessage(lastLog.getErrorMessage())
                     .build();
