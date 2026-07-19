@@ -20,6 +20,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.Nationalized;
 
 @Entity
 @Table(
@@ -40,6 +41,8 @@ public class Notification {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    /** @Nationalized để notification tiếng Việt (vd lý do từ chối tùy chỉnh) không bị mất dấu. */
+    @Nationalized
     @Column(nullable = false, length = 1000)
     private String message;
 

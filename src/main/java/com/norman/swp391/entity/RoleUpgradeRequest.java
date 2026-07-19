@@ -65,6 +65,8 @@ public class RoleUpgradeRequest {
     @Column(name = "rejection_reason", length = 30)
     private RoleRequestRejectionReason rejectionReason;
 
+    /** Ghi chú review / lý do tùy chỉnh khi từ chối — @Nationalized để lưu tiếng Việt có dấu (NVARCHAR). */
+    @Nationalized
     @Column(name = "review_note", length = 1000)
     private String reviewNote;
 

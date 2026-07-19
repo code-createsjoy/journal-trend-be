@@ -10,6 +10,7 @@ import com.norman.swp391.dto.response.role.RoleUpgradeRequestResponse;
 import com.norman.swp391.entity.RoleChangeLog;
 import com.norman.swp391.entity.RoleUpgradeRequest;
 import com.norman.swp391.entity.User;
+import com.norman.swp391.entity.enums.RoleRequestRejectionReason;
 import com.norman.swp391.entity.enums.RoleRequestStatus;
 import com.norman.swp391.entity.enums.UserRole;
 import com.norman.swp391.exception.BadRequestException;
@@ -136,13 +137,20 @@ public class RoleManagementServiceImpl implements RoleManagementService {
         RoleUpgradeRequest upgradeRequest = getPendingRequest(requestId);
         User operator = requireOperator(upgradeRequest);
 
+        String customReason = request.getCustomReason();
+        if (request.getRejectionReason() == RoleRequestRejectionReason.OTHER && !StringUtils.hasText(customReason)) {
+            throw new BadRequestException("Please specify a custom reason when selecting OTHER");
+        }
+        String note = StringUtils.hasText(customReason) ? customReason.trim() : null;
+
         upgradeRequest.setStatus(RoleRequestStatus.REJECTED);
         upgradeRequest.setReviewedBy(operator);
         upgradeRequest.setReviewedAt(LocalDateTime.now());
         upgradeRequest.setRejectionReason(request.getRejectionReason());
+        upgradeRequest.setReviewNote(note);
         roleUpgradeRequestRepository.save(upgradeRequest);
 
-        notificationService.notifyRoleRequestRejected(upgradeRequest.getUser(), request.getRejectionReason());
+        notificationService.notifyRoleRequestRejected(upgradeRequest.getUser(), request.getRejectionReason(), note);
         return RoleManagementMapper.toResponse(upgradeRequest);
     }
 

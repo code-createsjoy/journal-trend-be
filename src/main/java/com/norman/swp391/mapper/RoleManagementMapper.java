@@ -4,8 +4,10 @@ import com.norman.swp391.dto.response.role.RoleChangeLogResponse;
 import com.norman.swp391.dto.response.role.RoleUpgradeRequestResponse;
 import com.norman.swp391.entity.RoleChangeLog;
 import com.norman.swp391.entity.RoleUpgradeRequest;
+import com.norman.swp391.entity.enums.RoleRequestRejectionReason;
 import java.util.List;
 import lombok.experimental.UtilityClass;
+import org.springframework.util.StringUtils;
 
 /**
  * Mapper RoleManagementMapper.
@@ -28,15 +30,28 @@ public class RoleManagementMapper {
                 .proofUrl(request.getProofUrl())
                 .status(request.getStatus())
                 .rejectionReason(request.getRejectionReason())
-                .rejectionReasonText(request.getRejectionReason() != null
-                        ? request.getRejectionReason().getDescription()
-                        : null)
+                .rejectionReasonText(resolveRejectionReasonText(request))
                 .reviewNote(request.getReviewNote())
                 .reviewedById(request.getReviewedBy() != null ? request.getReviewedBy().getId() : null)
                 .reviewedByName(request.getReviewedBy() != null ? request.getReviewedBy().getFullName() : null)
                 .createdAt(request.getCreatedAt())
                 .reviewedAt(request.getReviewedAt())
                 .build();
+    }
+
+    /**
+     * Văn bản lý do từ chối để FE hiển thị. Khi Admin chọn OTHER và có ghi chú tùy chỉnh
+     * thì trả đúng nội dung đó (thay vì mô tả chung "Other reason"), ngược lại dùng mô tả enum.
+     */
+    private static String resolveRejectionReasonText(RoleUpgradeRequest request) {
+        RoleRequestRejectionReason reason = request.getRejectionReason();
+        if (reason == null) {
+            return null;
+        }
+        if (reason == RoleRequestRejectionReason.OTHER && StringUtils.hasText(request.getReviewNote())) {
+            return request.getReviewNote();
+        }
+        return reason.getDescription();
     }
 
     public static List<RoleUpgradeRequestResponse> toResponseList(List<RoleUpgradeRequest> requests) {

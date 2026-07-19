@@ -31,6 +31,7 @@ import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.NotificationService;
 import com.norman.swp391.service.EmailService;
+import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -409,13 +410,19 @@ public class NotificationServiceImpl implements NotificationService {
                 .build());
     }
 
-    /** Thông báo đơn xin đổi role bị từ chối, kèm lý do (tiếng Anh, chọn từ dropdown cố định). */
+    /**
+     * Thông báo đơn xin đổi role bị từ chối. Khi Admin chọn OTHER và có nhập lý do tùy chỉnh
+     * thì hiển thị đúng nội dung đó, ngược lại dùng mô tả cố định của enum.
+     */
     @Override
     @Transactional
-    public void notifyRoleRequestRejected(User targetUser, RoleRequestRejectionReason rejectionReason) {
+    public void notifyRoleRequestRejected(User targetUser, RoleRequestRejectionReason rejectionReason, String customReason) {
+        String reasonText = (rejectionReason == RoleRequestRejectionReason.OTHER && StringUtils.hasText(customReason))
+                ? customReason.trim()
+                : rejectionReason.getDescription();
         notificationRepository.save(Notification.builder()
                 .user(targetUser)
-                .message("Your role upgrade request has been rejected. Reason: " + rejectionReason.getDescription())
+                .message("Your role upgrade request has been rejected. Reason: " + reasonText)
                 .triggerType(NotificationTriggerType.SYSTEM)
                 .readStatus(NotificationReadStatus.UNREAD)
                 .createdAt(LocalDateTime.now())
