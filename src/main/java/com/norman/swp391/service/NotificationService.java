@@ -56,5 +56,5 @@ public interface NotificationService {
     /** Thông báo kết quả duyệt/từ chối đơn xin đổi role cho user nộp đơn. */
     void notifyRoleRequestApproved(User targetUser, UserRole newRole);
 
-    void notifyRoleRequestRejected(User targetUser, RoleRequestRejectionReason rejectionReason);
+    void notifyRoleRequestRejected(User targetUser, RoleRequestRejectionReason rejectionReason, String customReason);
 }
