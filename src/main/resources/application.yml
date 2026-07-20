@@ -132,6 +132,7 @@ app:
     forecast-weight-slope: ${FORECAST_WEIGHT_SLOPE:0.5}
     forecast-weight-acc: ${FORECAST_WEIGHT_ACC:0.3}
     forecast-weight-volume: ${FORECAST_WEIGHT_VOLUME:0.2}
+    max-papers-for-collection-analysis: ${AI_MAX_PAPERS_PER_COLLECTION_ANALYSIS:30}
     search-queries:
       - artificial intelligence
       - machine learning
