@@ -171,6 +171,8 @@ public class AppProperties {
         private double forecastWeightAcc = 0.3;
         /** Trọng số volume trong sTPS (mặc định 0.2). */
         private double forecastWeightVolume = 0.2;
+        /** Cap số paper đưa vào 1 lần phân tích AI theo collection (kiểm soát chi phí/token). */
+        private int maxPapersForCollectionAnalysis = 30;
     }
 }
 

@@ -1,10 +1,12 @@
 package com.norman.swp391.controller.v1;
 
 import com.norman.swp391.dto.common.ApiResponse;
+import com.norman.swp391.dto.request.ai.AiCollectionAnalysisRequest;
 import com.norman.swp391.dto.request.ai.AiTopTrendsAnalysisRequest;
 import com.norman.swp391.dto.request.ai.AiTrendAnalysisRequest;
 import com.norman.swp391.dto.response.ai.AiAnalysisHistoryDetailResponse;
 import com.norman.swp391.dto.response.ai.AiAnalysisHistorySummaryResponse;
+import com.norman.swp391.dto.response.ai.AiCollectionAnalysisResponse;
 import com.norman.swp391.dto.response.ai.AiTopTrendsAnalysisResponse;
 import com.norman.swp391.dto.response.ai.AiTrendAnalysisResponse;
 import com.norman.swp391.dto.response.common.PageResponse;
@@ -47,6 +49,22 @@ public class AiAnalysisController {
     @PostMapping("/analyze-top-trends")
     public ApiResponse<AiTopTrendsAnalysisResponse> analyzeTopTrends(@Valid @RequestBody AiTopTrendsAnalysisRequest request) {
         return ApiResponse.ok("AI top trends analysis completed", aiAnalysisService.analyzeTopTrends(request));
+    }
+
+    /**
+     * Phân tích AI paper trong 1 collection (của user hiện tại) dựa trên
+     * metadata: topic clusters, xu hướng theo thời gian, điểm chung/khác biệt,
+     * paper trọng tâm, research gap, collaboration highlights.
+     * Body.paperIds cho phép chọn thủ công paper cần phân tích (phải thuộc
+     * collection); để trống body hoặc paperIds sẽ tự lấy paper lưu gần nhất.
+     */
+    @PostMapping("/analyze-collection/{collectionId}")
+    public ApiResponse<AiCollectionAnalysisResponse> analyzeCollection(
+            @PathVariable Long collectionId,
+            @RequestBody(required = false) AiCollectionAnalysisRequest request) {
+        AiCollectionAnalysisRequest effectiveRequest = request != null ? request : new AiCollectionAnalysisRequest();
+        return ApiResponse.ok("AI collection analysis completed",
+                aiAnalysisService.analyzeCollection(collectionId, effectiveRequest));
     }
 
     /** Danh sách lịch sử phân tích AI của user hiện tại, mới nhất trước. */

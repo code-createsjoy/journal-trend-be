@@ -3,23 +3,42 @@ package com.norman.swp391.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.norman.swp391.config.AppProperties;
+import com.norman.swp391.dto.request.ai.AiCollectionAnalysisRequest;
 import com.norman.swp391.dto.request.ai.AiTopTrendsAnalysisRequest;
 import com.norman.swp391.dto.request.ai.AiTrendAnalysisRequest;
+import com.norman.swp391.dto.response.ai.AiCollectionAnalysisResponse;
 import com.norman.swp391.dto.response.ai.AiTopTrendsAnalysisResponse;
 import com.norman.swp391.dto.response.ai.AiTrendAnalysisResponse;
 import com.norman.swp391.dto.response.keyword.KeywordResponse;
 import com.norman.swp391.dto.response.keyword.KeywordTrendResponse;
+import com.norman.swp391.entity.CollectionPaper;
+import com.norman.swp391.entity.Paper;
+import com.norman.swp391.entity.PaperAuthor;
+import com.norman.swp391.entity.PaperCollection;
+import com.norman.swp391.entity.PaperKeyword;
 import com.norman.swp391.entity.enums.AiAnalysisType;
+import com.norman.swp391.entity.enums.PaperStatus;
 import com.norman.swp391.exception.AiQuotaExhaustedException;
 import com.norman.swp391.exception.BadRequestException;
+import com.norman.swp391.exception.ResourceNotFoundException;
+import com.norman.swp391.exception.UnauthorizedException;
+import com.norman.swp391.repository.CollectionPaperRepository;
+import com.norman.swp391.repository.PaperAuthorRepository;
+import com.norman.swp391.repository.PaperCollectionRepository;
+import com.norman.swp391.repository.PaperKeywordRepository;
+import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.AiAnalysisHistoryService;
 import com.norman.swp391.service.AiAnalysisService;
 import com.norman.swp391.service.KeywordService;
 import com.norman.swp391.service.KeywordTrendService;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -28,6 +47,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Slf4j
@@ -39,6 +59,10 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper;
     private final AiAnalysisHistoryService aiAnalysisHistoryService;
+    private final PaperCollectionRepository paperCollectionRepository;
+    private final CollectionPaperRepository collectionPaperRepository;
+    private final PaperKeywordRepository paperKeywordRepository;
+    private final PaperAuthorRepository paperAuthorRepository;
     @Qualifier("groqRestClient")
     private final RestClient groqRestClient;
 
@@ -329,5 +353,241 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
                     .recommendation("Automatic analysis failed, please see the analysis section.")
                     .build();
         }
+    }
+
+    /**
+     * Phân tích AI paper trong 1 collection của user hiện tại, dựa trên metadata
+     * (title/abstract/year/citations/keywords/authors) — không có full text. Nếu
+     * request.paperIds có giá trị, chỉ phân tích đúng các paper đó (phải thuộc
+     * collection, số lượng không vượt quá cap); nếu không, tự lấy các paper lưu
+     * gần nhất tối đa cap. Trả về topic clusters, xu hướng theo thời gian, điểm
+     * chung/khác biệt, paper trọng tâm, research gap và collaboration
+     * highlights.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public AiCollectionAnalysisResponse analyzeCollection(Long collectionId, AiCollectionAnalysisRequest request) {
+        String apiKey = appProperties.getGroq().getApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("GROQ_API_KEY is not configured");
+        }
+
+        PaperCollection collection = getOwnedCollection(collectionId);
+
+        List<Paper> papers = collectionPaperRepository.findByCollectionIdOrderBySavedAtDesc(collectionId).stream()
+                .map(CollectionPaper::getPaper)
+                .filter(p -> p.getStatus() == PaperStatus.ACTIVE)
+                .toList();
+
+        if (papers.isEmpty()) {
+            throw new BadRequestException("Collection has no papers to analyze");
+        }
+
+        int maxPapers = appProperties.getSync().getMaxPapersForCollectionAnalysis();
+        List<Long> requestedIds = request != null ? request.getPaperIds() : null;
+        List<Paper> analyzed;
+        if (requestedIds != null && !requestedIds.isEmpty()) {
+            if (requestedIds.size() > maxPapers) {
+                throw new BadRequestException(
+                        "You selected " + requestedIds.size() + " papers, but at most " + maxPapers
+                                + " can be analyzed at once");
+            }
+            Set<Long> requestedSet = new LinkedHashSet<>(requestedIds);
+            analyzed = papers.stream().filter(p -> requestedSet.contains(p.getId())).toList();
+            if (analyzed.isEmpty()) {
+                throw new BadRequestException("None of the selected papers belong to this collection");
+            }
+        } else {
+            analyzed = papers.size() > maxPapers ? papers.subList(0, maxPapers) : papers;
+        }
+        List<Long> paperIds = analyzed.stream().map(Paper::getId).toList();
+        Set<Long> validPaperIds = new LinkedHashSet<>(paperIds);
+
+        Map<Long, List<String>> keywordsByPaperId = paperKeywordRepository.findByPaperIdInWithKeyword(paperIds)
+                .stream()
+                .collect(Collectors.groupingBy(pk -> pk.getPaper().getId(), LinkedHashMap::new,
+                        Collectors.mapping(pk -> pk.getKeyword().getTerm(), Collectors.toList())));
+        Map<Long, List<String>> authorsByPaperId = paperAuthorRepository.findByPaperIdInWithAuthor(paperIds).stream()
+                .collect(Collectors.groupingBy(pa -> pa.getPaper().getId(), LinkedHashMap::new,
+                        Collectors.mapping(pa -> pa.getAuthor().getName(), Collectors.toList())));
+
+        String prompt = buildCollectionPrompt(collection.getName(), analyzed, keywordsByPaperId, authorsByPaperId);
+        String aiResponseText = callGroq(prompt);
+
+        AiCollectionAnalysisResponse response = parseCollectionAiResponse(aiResponseText, collection, papers.size(),
+                analyzed.size(), validPaperIds);
+        aiAnalysisHistoryService.saveHistory(AiAnalysisType.COLLECTION_ANALYSIS, List.of(collection.getName()),
+                truncate(response.getOverallSummary(), 50), response);
+        return response;
+    }
+
+    /** overall_verdict is capped at 50 chars in the DB — never pass free-form AI text there untruncated. */
+    private String truncate(String text, int maxLength) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() > maxLength ? text.substring(0, maxLength - 3) + "..." : text;
+    }
+
+    /**
+     * Ghép metadata (title/year/journal/citations/keywords/authors/abstract rút
+     * gọn) của các paper trong collection thành 1 prompt, yêu cầu AI trả lời đúng
+     * JSON schema của AiCollectionAnalysisResponse.
+     */
+    private String buildCollectionPrompt(String collectionName, List<Paper> papers,
+            Map<Long, List<String>> keywordsByPaperId, Map<Long, List<String>> authorsByPaperId) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("You are an expert research analyst. Analyze the following collection of academic papers ");
+        sb.append("using ONLY the metadata below (title, abstract, year, journal, citations, keywords, authors). ");
+        sb.append("No full text is available, so do not invent details about methodology or results.\n\n");
+        sb.append("Collection: **").append(collectionName).append("** (").append(papers.size()).append(" papers)\n\n");
+
+        for (Paper p : papers) {
+            sb.append(String.format("- [id=%d] \"%s\" (%s, %s), citations=%d%n",
+                    p.getId(),
+                    p.getTitle(),
+                    p.getPublicationDate() != null ? p.getPublicationDate().getYear() : "n/a",
+                    p.getJournal() != null ? p.getJournal() : "n/a",
+                    p.getCitationCount()));
+            List<String> keywords = keywordsByPaperId.getOrDefault(p.getId(), Collections.emptyList());
+            if (!keywords.isEmpty()) {
+                sb.append("  keywords: ").append(String.join(", ", keywords)).append("\n");
+            }
+            List<String> authors = authorsByPaperId.getOrDefault(p.getId(), Collections.emptyList());
+            if (!authors.isEmpty()) {
+                sb.append("  authors: ").append(String.join(", ", authors)).append("\n");
+            }
+            String abstractText = p.getAbstractText();
+            if (abstractText != null && !abstractText.isBlank()) {
+                sb.append("  abstract: ")
+                        .append(abstractText.length() > 500 ? abstractText.substring(0, 500) + "..." : abstractText)
+                        .append("\n");
+            }
+        }
+
+        sb.append(
+                """
+
+                        Analyze the collection and respond EXACTLY in the following JSON format (no markdown, no text outside the JSON). Paper ids referenced in the output MUST come from the [id=...] values above:
+                        {
+                          "overallSummary": "<2-4 sentences: what this collection is about overall, written in English>",
+                          "topicClusters": [
+                            {"name": "<short topic name>", "description": "<1-2 sentences>", "paperIds": [<id>, <id>]}
+                          ],
+                          "trendOverTime": "<narrative on which topics/years are rising or declining, based on year and citations, written in English>",
+                          "commonalities": "<what most papers in the collection share in common, written in English>",
+                          "outliers": [
+                            {"paperId": <id>, "title": "<title>", "reason": "<why it stands out from the rest>"}
+                          ],
+                          "corePapers": [
+                            {"paperId": <id>, "title": "<title>", "citationCount": <int>, "reason": "<why it is foundational/central to the collection>"}
+                          ],
+                          "researchGaps": ["<under-covered sub-topic 1>", "<under-covered sub-topic 2>"],
+                          "collaborationHighlights": "<notable author or journal collaboration patterns, or empty string if none stand out>",
+                          "recommendation": "<actionable recommendation for a researcher looking at this collection, written in English>"
+                        }
+                        """);
+
+        return sb.toString();
+    }
+
+    /**
+     * Parse chuỗi JSON mà AI trả về (cho luồng phân tích collection) thành DTO.
+     * Nếu JSON không hợp lệ/parse lỗi → không throw exception, mà trả về 1
+     * response "an toàn" (analysis rỗng, overallSummary = JSON thô) để user vẫn
+     * xem được nội dung. validPaperIds lọc bỏ paperId mà AI bịa ra (không nằm
+     * trong tập paper thực sự đã gửi đi phân tích) để tránh FE link tới paper sai.
+     */
+    private AiCollectionAnalysisResponse parseCollectionAiResponse(String json, PaperCollection collection,
+            int paperCount, int analyzedCount, Set<Long> validPaperIds) {
+        try {
+            JsonNode node = objectMapper.readTree(json);
+
+            List<AiCollectionAnalysisResponse.TopicCluster> topicClusters = new ArrayList<>();
+            node.path("topicClusters").forEach(n -> {
+                List<Long> ids = new ArrayList<>();
+                n.path("paperIds").forEach(idNode -> {
+                    long id = idNode.asLong();
+                    if (validPaperIds.contains(id)) {
+                        ids.add(id);
+                    }
+                });
+                topicClusters.add(AiCollectionAnalysisResponse.TopicCluster.builder()
+                        .name(n.path("name").asText())
+                        .description(n.path("description").asText())
+                        .paperIds(ids)
+                        .build());
+            });
+
+            List<AiCollectionAnalysisResponse.OutlierPaper> outliers = new ArrayList<>();
+            node.path("outliers").forEach(n -> {
+                long id = n.path("paperId").asLong();
+                if (validPaperIds.contains(id)) {
+                    outliers.add(AiCollectionAnalysisResponse.OutlierPaper.builder()
+                            .paperId(id)
+                            .title(n.path("title").asText())
+                            .reason(n.path("reason").asText())
+                            .build());
+                }
+            });
+
+            List<AiCollectionAnalysisResponse.CorePaper> corePapers = new ArrayList<>();
+            node.path("corePapers").forEach(n -> {
+                long id = n.path("paperId").asLong();
+                if (validPaperIds.contains(id)) {
+                    corePapers.add(AiCollectionAnalysisResponse.CorePaper.builder()
+                            .paperId(id)
+                            .title(n.path("title").asText())
+                            .citationCount(n.path("citationCount").asInt(0))
+                            .reason(n.path("reason").asText())
+                            .build());
+                }
+            });
+
+            List<String> researchGaps = new ArrayList<>();
+            node.path("researchGaps").forEach(n -> researchGaps.add(n.asText()));
+
+            return AiCollectionAnalysisResponse.builder()
+                    .collectionId(collection.getId())
+                    .collectionName(collection.getName())
+                    .paperCount(paperCount)
+                    .analyzedPaperCount(analyzedCount)
+                    .overallSummary(node.path("overallSummary").asText())
+                    .topicClusters(topicClusters)
+                    .trendOverTime(node.path("trendOverTime").asText())
+                    .commonalities(node.path("commonalities").asText())
+                    .outliers(outliers)
+                    .corePapers(corePapers)
+                    .researchGaps(researchGaps)
+                    .collaborationHighlights(node.path("collaborationHighlights").asText())
+                    .recommendation(node.path("recommendation").asText())
+                    .build();
+        } catch (Exception e) {
+            log.error("Failed to parse AI collection-analysis response: {}", json);
+            return AiCollectionAnalysisResponse.builder()
+                    .collectionId(collection.getId())
+                    .collectionName(collection.getName())
+                    .paperCount(paperCount)
+                    .analyzedPaperCount(analyzedCount)
+                    .overallSummary(json)
+                    .topicClusters(List.of())
+                    .trendOverTime("")
+                    .commonalities("")
+                    .outliers(List.of())
+                    .corePapers(List.of())
+                    .researchGaps(List.of())
+                    .collaborationHighlights("")
+                    .recommendation("Unable to parse the AI response, please refer to the overallSummary field.")
+                    .build();
+        }
+    }
+
+    private PaperCollection getOwnedCollection(Long id) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new UnauthorizedException("Not authenticated");
+        }
+        return paperCollectionRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Collection", id));
     }
 }
