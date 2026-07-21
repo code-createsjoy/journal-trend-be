@@ -511,7 +511,10 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         sb.append(
                 """
 
-                        Analyze the collection and respond EXACTLY in the following JSON format (no markdown, no text outside the JSON). Paper ids referenced in the output MUST come from the [id=...] values above:
+                        Analyze the collection and respond EXACTLY in the following JSON format (no markdown, no text outside the JSON). Paper ids referenced in the output MUST come from the [id=...] values above.
+
+                        For topicClusters specifically: EVERY paper id listed above MUST appear in exactly ONE cluster — do not omit any paper and do not list the same paper in more than one cluster. If some papers do not clearly fit any of the main themes, group them together into one cluster named "Other" or "Miscellaneous" rather than leaving them out.
+
                         {
                           "overallSummary": "<2-4 sentences: what this collection is about overall, written in English>",
                           "topicClusters": [
