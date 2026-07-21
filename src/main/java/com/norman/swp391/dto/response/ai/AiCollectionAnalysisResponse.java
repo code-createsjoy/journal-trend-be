@@ -51,7 +51,17 @@ public class AiCollectionAnalysisResponse {
     public static class TopicCluster {
         private String name;
         private String description;
-        private List<Long> paperIds;
+        /** Title lấy thẳng từ DB (không qua AI) — luôn khớp đúng paper thật, không thể bị AI gõ sai/hallucinate. */
+        private List<PaperRef> papers;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class PaperRef {
+        private Long paperId;
+        private String title;
     }
 
     @Data

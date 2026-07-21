@@ -401,7 +401,10 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             analyzed = papers.size() > maxPapers ? papers.subList(0, maxPapers) : papers;
         }
         List<Long> paperIds = analyzed.stream().map(Paper::getId).toList();
-        Set<Long> validPaperIds = new LinkedHashSet<>(paperIds);
+        // keySet() đóng vai trò "tập id hợp lệ" để lọc paperId AI bịa; value là title thật lấy từ
+        // DB, không qua AI, để FE hiển thị được ngay trong topicClusters mà không cần tự tra cứu.
+        Map<Long, String> paperTitlesById = analyzed.stream()
+                .collect(Collectors.toMap(Paper::getId, Paper::getTitle, (a, b) -> a, LinkedHashMap::new));
 
         Map<Long, List<String>> keywordsByPaperId = paperKeywordRepository.findByPaperIdInWithKeyword(paperIds)
                 .stream()
@@ -415,10 +418,30 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         String aiResponseText = callGroq(prompt);
 
         AiCollectionAnalysisResponse response = parseCollectionAiResponse(aiResponseText, collection, papers.size(),
-                analyzed.size(), validPaperIds);
-        safeSaveHistory(AiAnalysisType.COLLECTION_ANALYSIS, List.of(collection.getName()),
+                analyzed.size(), paperTitlesById);
+        safeSaveHistory(AiAnalysisType.COLLECTION_ANALYSIS, buildHistoryTargetKeywords(collection, response),
                 truncate(response.getOverallSummary(), 50), response);
         return response;
+    }
+
+    /**
+     * targetKeywords cho lịch sử collection analysis: [0] = tên collection kèm số bài đã phân
+     * tích (tín hiệu chắc chắn phân biệt được 2 lần chạy khác nhau, vì số bài luôn khác khi user
+     * đổi lựa chọn) + tên các topic cluster AI trích xuất được (gợi ý nội dung, dễ đọc hơn nhưng
+     * không đảm bảo phân biệt tuyệt đối — corpus hiện thiên nhiều về AI/CS nên cluster name giữa
+     * các lần chạy có thể trùng nhau).
+     */
+    private List<String> buildHistoryTargetKeywords(PaperCollection collection, AiCollectionAnalysisResponse response) {
+        List<String> targetKeywords = new ArrayList<>();
+        targetKeywords.add(collection.getName() + " (" + response.getAnalyzedPaperCount() + " papers)");
+        if (response.getTopicClusters() != null) {
+            for (AiCollectionAnalysisResponse.TopicCluster cluster : response.getTopicClusters()) {
+                if (cluster.getName() != null && !cluster.getName().isBlank()) {
+                    targetKeywords.add(cluster.getName());
+                }
+            }
+        }
+        return targetKeywords;
     }
 
     /** overall_verdict is capped at 50 chars in the DB — never pass free-form AI text there untruncated. */
@@ -515,37 +538,45 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
      * Parse chuỗi JSON mà AI trả về (cho luồng phân tích collection) thành DTO.
      * Nếu JSON không hợp lệ/parse lỗi → không throw exception, mà trả về 1
      * response "an toàn" (analysis rỗng, overallSummary = JSON thô) để user vẫn
-     * xem được nội dung. validPaperIds lọc bỏ paperId mà AI bịa ra (không nằm
-     * trong tập paper thực sự đã gửi đi phân tích) để tránh FE link tới paper sai.
+     * xem được nội dung. paperTitlesById (keySet = id hợp lệ) lọc bỏ paperId mà AI
+     * bịa ra, đồng thời cung cấp title THẬT lấy từ DB — không dùng title do AI tự
+     * viết ra, vì AI có thể gõ sai/paraphrase title dù id đúng.
      */
     private AiCollectionAnalysisResponse parseCollectionAiResponse(String json, PaperCollection collection,
-            int paperCount, int analyzedCount, Set<Long> validPaperIds) {
+            int paperCount, int analyzedCount, Map<Long, String> paperTitlesById) {
         try {
             JsonNode node = objectMapper.readTree(json);
 
             List<AiCollectionAnalysisResponse.TopicCluster> topicClusters = new ArrayList<>();
             node.path("topicClusters").forEach(n -> {
-                List<Long> ids = new ArrayList<>();
+                List<AiCollectionAnalysisResponse.PaperRef> refs = new ArrayList<>();
                 n.path("paperIds").forEach(idNode -> {
                     long id = idNode.asLong();
-                    if (validPaperIds.contains(id)) {
-                        ids.add(id);
+                    String title = paperTitlesById.get(id);
+                    if (title != null) {
+                        refs.add(AiCollectionAnalysisResponse.PaperRef.builder().paperId(id).title(title).build());
                     }
                 });
-                topicClusters.add(AiCollectionAnalysisResponse.TopicCluster.builder()
-                        .name(n.path("name").asText())
-                        .description(n.path("description").asText())
-                        .paperIds(ids)
-                        .build());
+                // Bỏ hẳn cluster nếu mọi paperId của nó đều là AI bịa (bị lọc hết) — một cluster
+                // không còn bài thật nào thì không nên xuất hiện trong response lẫn trong
+                // targetKeywords của lịch sử (xem buildHistoryTargetKeywords).
+                if (!refs.isEmpty()) {
+                    topicClusters.add(AiCollectionAnalysisResponse.TopicCluster.builder()
+                            .name(n.path("name").asText())
+                            .description(n.path("description").asText())
+                            .papers(refs)
+                            .build());
+                }
             });
 
             List<AiCollectionAnalysisResponse.OutlierPaper> outliers = new ArrayList<>();
             node.path("outliers").forEach(n -> {
                 long id = n.path("paperId").asLong();
-                if (validPaperIds.contains(id)) {
+                String title = paperTitlesById.get(id);
+                if (title != null) {
                     outliers.add(AiCollectionAnalysisResponse.OutlierPaper.builder()
                             .paperId(id)
-                            .title(n.path("title").asText())
+                            .title(title)
                             .reason(n.path("reason").asText())
                             .build());
                 }
@@ -554,10 +585,11 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             List<AiCollectionAnalysisResponse.CorePaper> corePapers = new ArrayList<>();
             node.path("corePapers").forEach(n -> {
                 long id = n.path("paperId").asLong();
-                if (validPaperIds.contains(id)) {
+                String title = paperTitlesById.get(id);
+                if (title != null) {
                     corePapers.add(AiCollectionAnalysisResponse.CorePaper.builder()
                             .paperId(id)
-                            .title(n.path("title").asText())
+                            .title(title)
                             .citationCount(n.path("citationCount").asInt(0))
                             .reason(n.path("reason").asText())
                             .build());

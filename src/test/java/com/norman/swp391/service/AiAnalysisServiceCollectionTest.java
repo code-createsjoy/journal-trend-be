@@ -201,10 +201,33 @@ public class AiAnalysisServiceCollectionTest {
         AiCollectionAnalysisResponse response = aiAnalysisService.analyzeCollection(collection.getId(),
                 new AiCollectionAnalysisRequest());
 
-        assertEquals(1, response.getTopicClusters().get(0).getPaperIds().size());
-        assertEquals(paperA.getId(), response.getTopicClusters().get(0).getPaperIds().get(0));
+        assertEquals(1, response.getTopicClusters().get(0).getPapers().size());
+        assertEquals(paperA.getId(), response.getTopicClusters().get(0).getPapers().get(0).getPaperId());
+        assertEquals(paperA.getTitle(), response.getTopicClusters().get(0).getPapers().get(0).getTitle());
         assertTrue(response.getOutliers().isEmpty(), "hallucinated outlier paperId must be dropped");
         assertFalse(response.getCorePapers().isEmpty(), "real core paper must be kept");
         assertEquals(paperB.getId(), response.getCorePapers().get(0).getPaperId());
+    }
+
+    @Test
+    void fullyHallucinatedCluster_isDroppedEntirely() {
+        long fakeId1 = 999_991L;
+        long fakeId2 = 999_992L;
+        String aiJson = String.format(
+                "{\"overallSummary\":\"summary\","
+                        + "\"topicClusters\":["
+                        + "{\"name\":\"real cluster\",\"description\":\"d\",\"paperIds\":[%d]},"
+                        + "{\"name\":\"ghost cluster\",\"description\":\"d\",\"paperIds\":[%d,%d]}"
+                        + "],"
+                        + "\"outliers\":[],\"corePapers\":[],\"researchGaps\":[]}",
+                paperA.getId(), fakeId1, fakeId2);
+        stubGroqResponse(aiJson);
+
+        AiCollectionAnalysisResponse response = aiAnalysisService.analyzeCollection(collection.getId(),
+                new AiCollectionAnalysisRequest());
+
+        assertEquals(1, response.getTopicClusters().size(),
+                "cluster with 100% hallucinated paperIds must be dropped, not kept with an empty paperIds list");
+        assertEquals("real cluster", response.getTopicClusters().get(0).getName());
     }
 }
