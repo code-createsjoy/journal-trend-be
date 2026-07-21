@@ -6,14 +6,19 @@ import com.norman.swp391.config.AppProperties;
 import com.norman.swp391.dto.response.keyword.ForecastDetailResponse;
 import com.norman.swp391.dto.response.keyword.ForecastListResponse;
 import com.norman.swp391.dto.response.keyword.ForecastMonthDto;
+import com.norman.swp391.dto.response.keyword.ForecastStatusResponse;
 import com.norman.swp391.entity.FutureTrendForecast;
 import com.norman.swp391.entity.Keyword;
 import com.norman.swp391.entity.PublicationTrend;
+import com.norman.swp391.entity.SyncLog;
 import com.norman.swp391.entity.enums.ForecastCategory;
+import com.norman.swp391.entity.enums.SyncStatus;
+import com.norman.swp391.exception.ConflictException;
 import com.norman.swp391.exception.ResourceNotFoundException;
 import com.norman.swp391.repository.FutureTrendForecastRepository;
 import com.norman.swp391.repository.KeywordRepository;
 import com.norman.swp391.repository.PublicationTrendRepository;
+import com.norman.swp391.repository.SyncLogRepository;
 import com.norman.swp391.service.FutureTrendForecastService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -25,6 +30,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -39,8 +45,16 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     private final KeywordRepository keywordRepository;
     private final PublicationTrendRepository publicationTrendRepository;
     private final FutureTrendForecastRepository forecastRepository;
+    private final SyncLogRepository syncLogRepository;
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper;
+
+    /**
+     * Chặn 2 lần chạy job đồng thời (nút Run Forecast + scheduler hằng tháng). Job xóa sạch rồi
+     * ghi lại cả bảng future_trend_forecasts nên 2 lần chạy song song sẽ tranh nhau dữ liệu.
+     * Chỉ có tác dụng trong phạm vi 1 instance app.
+     */
+    private final AtomicBoolean jobRunning = new AtomicBoolean(false);
 
     // ────────────────────────────────────────────────────────
     // PUBLIC API
@@ -54,6 +68,22 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     @Override
     @Transactional
     public void runForecastJob() {
+        // Khóa trước khi vào pipeline: nút Run Forecast và scheduler hằng tháng dùng chung guard này.
+        if (!jobRunning.compareAndSet(false, true)) {
+            throw new ConflictException("Đang có tiến trình dự báo chạy, vui lòng thử lại sau.");
+        }
+        try {
+            computeAndSaveForecast();
+        } finally {
+            jobRunning.set(false);
+        }
+    }
+
+    /**
+     * Thân pipeline dự báo — tách khỏi {@link #runForecastJob()} để method public chỉ còn phần
+     * khóa chống chạy đồng thời. Chạy trong transaction của method gọi nó.
+     */
+    private void computeAndSaveForecast() {
         log.info("[ForecastJob] Starting hot topic forecast computation");
         LocalDateTime jobStart = LocalDateTime.now();
         AppProperties.Sync cfg = appProperties.getSync();
@@ -220,6 +250,47 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
             .forecastReason(forecast.getForecastReason())
             .historicalMonths(historical)
             .forecastMonths(forecastMonths)
+            .build();
+    }
+
+    /**
+     * Trạng thái nút "Run Forecast". Không lưu cờ riêng trong DB mà so sánh trực tiếp 2 mốc
+     * thời gian đã có sẵn: lần sync gần nhất nạp được bài mới và lần chạy forecast gần nhất.
+     * Nhờ vậy trạng thái luôn đúng với mọi đường trigger sync (admin, helix, cron) và tự phục
+     * hồi nếu job kết thúc sớm mà không lưu được gì.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public ForecastStatusResponse getForecastStatus() {
+        LocalDateTime lastSynced   = syncLogRepository.findLastFinishedAtWithNewPapers().orElse(null);
+        LocalDateTime lastForecast = forecastRepository.findLatestCalculatedAt().orElse(null);
+
+        // Sync đang chạy → trend đang được recalculateAll() ghi dở, forecast lúc này ra kết quả
+        // nửa vời. Phải xét TRƯỚC các điều kiện khác vì lastSynced khi đó vẫn là mốc lần trước.
+        SyncLog latestSync = syncLogRepository.findFirstByOrderByStartedAtDesc();
+        boolean syncRunning = latestSync != null && latestSync.getStatus() == SyncStatus.RUNNING;
+
+        String reasonCode = null;
+        String reason = null;
+
+        if (syncRunning) {
+            reasonCode = "SYNC_RUNNING";
+            reason = "Hệ thống đang đồng bộ bài báo. Vui lòng chờ đợt sync hoàn tất.";
+        } else if (lastSynced == null) {
+            reasonCode = "NEVER_SYNCED";
+            reason = "Chưa có đợt sync nào nạp được bài báo mới. Vui lòng chờ Admin đồng bộ dữ liệu.";
+        } else if (lastForecast != null && !lastSynced.isAfter(lastForecast)) {
+            reasonCode = "NO_NEW_DATA";
+            reason = "Dữ liệu dự báo đã ở phiên bản mới nhất. "
+                   + "Chưa có bài báo mới kể từ lần dự báo gần nhất.";
+        }
+
+        return ForecastStatusResponse.builder()
+            .canRunForecast(reasonCode == null)
+            .lastSyncedAt(lastSynced)
+            .lastForecastRunAt(lastForecast)
+            .reasonCode(reasonCode)
+            .reasonIfDisabled(reason)
             .build();
     }
 

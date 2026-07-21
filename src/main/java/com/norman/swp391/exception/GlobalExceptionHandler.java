@@ -39,6 +39,15 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Xung đột trạng thái (VD: chạy forecast khi chưa có dữ liệu bài báo mới) — trả 409 để FE
+     * phân biệt được với 400 (dữ liệu gửi lên sai).
+     */
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConflict(ConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error(ex.getMessage()));
+    }
+
+    /**
      * Chưa xác thực (chưa đăng nhập / token hết hạn) — luôn trả 401, thống nhất cho FE dựa vào
      * để kích hoạt luồng refresh token, không lẫn với lỗi 400 (dữ liệu sai) thông thường.
      */

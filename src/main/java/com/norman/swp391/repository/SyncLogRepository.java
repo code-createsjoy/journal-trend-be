@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Kho truy cập nhật ký đồng bộ.
@@ -70,4 +71,18 @@ public interface SyncLogRepository extends JpaRepository<SyncLog, Long> {
      * Tìm kiếm: findRecentWithAdmin.
      */
     List<SyncLog> findRecentWithAdmin(Pageable pageable);
+
+    /**
+     * Thời điểm kết thúc của lần sync gần nhất CÓ nạp được bài báo mới — dùng để xác định
+     * nút "Run Forecast" có được mở hay không.
+     *
+     * <p>Không lọc theo status: một lần sync FAILED giữa chừng vẫn có thể đã insert hàng nghìn
+     * paper, dữ liệu đó là thật nên forecast xứng đáng được chạy lại. Sync đang RUNNING có
+     * finishedAt = null nên tự động bị loại.
+     */
+    @Query("""
+        SELECT MAX(s.finishedAt) FROM SyncLog s
+        WHERE s.finishedAt IS NOT NULL AND s.papersInserted > 0
+        """)
+    Optional<LocalDateTime> findLastFinishedAtWithNewPapers();
 }

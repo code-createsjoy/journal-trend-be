@@ -3,7 +3,9 @@ package com.norman.swp391.controller.v1;
 import com.norman.swp391.dto.common.ApiResponse;
 import com.norman.swp391.dto.response.keyword.ForecastDetailResponse;
 import com.norman.swp391.dto.response.keyword.ForecastListResponse;
+import com.norman.swp391.dto.response.keyword.ForecastStatusResponse;
 import com.norman.swp391.dto.response.keyword.TrendingTopicResponse;
+import com.norman.swp391.exception.ConflictException;
 import com.norman.swp391.service.FutureTrendForecastService;
 import com.norman.swp391.service.KeywordTrendService;
 import lombok.RequiredArgsConstructor;
@@ -61,14 +63,31 @@ public class TrendController {
     }
 
     /**
-     * Chạy lại job dự báo hot topic theo yêu cầu (nút "Run Forecast" trên UI).
+     * Trạng thái nút "Run Forecast": đã có bài báo mới kể từ lần dự báo gần nhất hay chưa.
      * Student không có quyền truy cập.
+     */
+    @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
+    @GetMapping("/forecast/status")
+    public ApiResponse<ForecastStatusResponse> getForecastStatus() {
+        return ApiResponse.ok("Fetch forecast status successfully", forecastService.getForecastStatus());
+    }
+
+    /**
+     * Chạy lại job dự báo hot topic theo yêu cầu (nút "Run Forecast" trên UI).
+     * Chỉ chạy được khi có bài báo mới kể từ lần dự báo gần nhất — tránh tính lại vô ích
+     * trên cùng một tập dữ liệu. Student không có quyền truy cập.
      */
     @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @PostMapping("/forecast/run")
     public ApiResponse<List<ForecastListResponse>> runForecast(
             @RequestParam(defaultValue = "10") int limit,
             @RequestParam(defaultValue = "6") int months) {
+        // Gọi qua forecastService (không gộp vào 1 method của service) để mọi lời gọi đều đi
+        // qua Spring proxy — tránh bẫy self-invocation làm @Transactional mất tác dụng.
+        ForecastStatusResponse status = forecastService.getForecastStatus();
+        if (!status.isCanRunForecast()) {
+            throw new ConflictException(status.getReasonIfDisabled());
+        }
         forecastService.runForecastJob();
         return ApiResponse.ok("Forecast recalculated", forecastService.getTopForecasts(limit, months));
     }
