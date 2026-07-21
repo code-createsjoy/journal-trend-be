@@ -90,8 +90,8 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         String aiResponseText = callGroq(prompt);
 
         AiTrendAnalysisResponse response = parseAiResponse(aiResponseText, keyword.getTerm());
-        aiAnalysisHistoryService.saveHistory(AiAnalysisType.SINGLE_KEYWORD, List.of(response.getKeyword()),
-                response.getVerdict(), response);
+        safeSaveHistory(AiAnalysisType.SINGLE_KEYWORD, List.of(response.getKeyword()), response.getVerdict(),
+                response);
         return response;
     }
 
@@ -221,8 +221,8 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         String aiResponseText = callGroq(prompt);
         AiTopTrendsAnalysisResponse response = parseTopTrendsAiResponse(aiResponseText,
                 new ArrayList<>(combinedData.keySet()));
-        aiAnalysisHistoryService.saveHistory(AiAnalysisType.TOP_TRENDS, response.getAnalyzedKeywords(),
-                response.getOverallVerdict(), response);
+        safeSaveHistory(AiAnalysisType.TOP_TRENDS, response.getAnalyzedKeywords(), response.getOverallVerdict(),
+                response);
         return response;
     }
 
@@ -416,7 +416,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
 
         AiCollectionAnalysisResponse response = parseCollectionAiResponse(aiResponseText, collection, papers.size(),
                 analyzed.size(), validPaperIds);
-        aiAnalysisHistoryService.saveHistory(AiAnalysisType.COLLECTION_ANALYSIS, List.of(collection.getName()),
+        safeSaveHistory(AiAnalysisType.COLLECTION_ANALYSIS, List.of(collection.getName()),
                 truncate(response.getOverallSummary(), 50), response);
         return response;
     }
@@ -427,6 +427,26 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             return "";
         }
         return text.length() > maxLength ? text.substring(0, maxLength - 3) + "..." : text;
+    }
+
+    /**
+     * Bọc aiAnalysisHistoryService.saveHistory() bằng try-catch riêng ở đây, ngoài
+     * @Transactional(REQUIRES_NEW) đã có trong AiAnalysisHistoryServiceImpl. Chỉ REQUIRES_NEW là
+     * chưa đủ: khi INSERT lịch sử thất bại (VD vi phạm CHECK constraint/độ dài cột), transaction
+     * MỚI mà saveHistory tự tạo cũng bị Hibernate đánh dấu rollback-only nội bộ — dù exception gốc
+     * đã bị bắt bên trong saveHistory, khi method đó return bình thường, Spring vẫn cố commit
+     * transaction của chính nó và ném UnexpectedRollbackException ra ngoài lời gọi. Nếu không bắt
+     * ở đây, exception này vẫn lan tới caller (analyzeTrend/analyzeTopTrends/analyzeCollection) dù
+     * saveHistory được thiết kế là non-fatal. Đã verify bằng test
+     * AiHistoryRollbackBugTest — REQUIRES_NEW không tự đủ, bắt buộc phải có lớp try-catch này.
+     */
+    private void safeSaveHistory(AiAnalysisType type, List<String> targetKeywords, String overallVerdict,
+            Object rawResponse) {
+        try {
+            aiAnalysisHistoryService.saveHistory(type, targetKeywords, overallVerdict, rawResponse);
+        } catch (Exception ex) {
+            log.warn("[AI_HISTORY] saveHistory call failed, ignoring (non-fatal): {}", ex.getMessage());
+        }
     }
 
     /**
