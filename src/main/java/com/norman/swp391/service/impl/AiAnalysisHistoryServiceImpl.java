@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Quản lý lịch sử phân tích xu hướng bằng AI của user. */
@@ -33,8 +34,19 @@ public class AiAnalysisHistoryServiceImpl implements AiAnalysisHistoryService {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
+    /**
+     * REQUIRES_NEW: tách hẳn khỏi transaction của luồng phân tích AI đang gọi vào đây. Nếu để
+     * propagation mặc định (REQUIRED), method này sẽ tham gia CHUNG transaction với caller (VD
+     * AiAnalysisServiceImpl.analyzeCollection @Transactional(readOnly=true)) — khi INSERT thất
+     * bại (VD vi phạm CHECK constraint/độ dài cột), dù exception bị bắt và nuốt ở đây, Hibernate
+     * vẫn đánh dấu transaction hiện tại là rollback-only; đến khi transaction ngoài cùng cố
+     * commit, Spring ném UnexpectedRollbackException dù code không hề thấy exception nào cả,
+     * khiến API chính trả về lỗi 500 chỉ vì việc ghi lịch sử (vốn được thiết kế non-fatal) thất
+     * bại. REQUIRES_NEW cô lập hoàn toàn: transaction ghi lịch sử thất bại độc lập, transaction
+     * của caller không hề bị ảnh hưởng.
+     */
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveHistory(AiAnalysisType type, List<String> targetKeywords, String overallVerdict,
             Object rawResponse) {
         try {

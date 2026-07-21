@@ -30,11 +30,13 @@ public interface JournalRepository extends JpaRepository<Journal, Long> {
     @Query("SELECT j FROM Journal j WHERE :q IS NULL OR LOWER(j.name) LIKE LOWER(CONCAT('%', :q, '%'))")
     Page<Journal> search(@Param("q") String q, Pageable pageable);
 
+    /** Chỉ lấy journal có CPP (impactFactor) > 0 — ưu tiên journal có trích dẫn thật dù ít bài hơn journal CPP=0. */
     @Query("""
         SELECT j.id, j.name, j.impactFactor, j.domain, COUNT(p.id)
         FROM Paper p
         JOIN p.journalRef j
         WHERE p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+          AND j.impactFactor IS NOT NULL AND j.impactFactor > 0
         GROUP BY j.id, j.name, j.impactFactor, j.domain
         ORDER BY COUNT(p.id) DESC
         """)
