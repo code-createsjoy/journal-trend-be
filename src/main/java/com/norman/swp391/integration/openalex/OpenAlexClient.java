@@ -52,7 +52,7 @@ public class OpenAlexClient {
         // TODO: Bỏ comment dòng bên dưới sau khi đã lấy đủ dữ liệu các tháng cũ
         // để hệ thống quay lại ưu tiên lấy các bài báo mới nhất (đề phòng OpenAlex bị
         // quá tải).
-        // builder.queryParam("sort", "publication_date:asc");
+        // builder.queryParam("sort", "publication_date:desc");
         String filterStr = "has_doi:true,has_abstract:true";
         if (StringUtils.hasText(fromPublicationDate)) {
             filterStr += ",from_publication_date:" + fromPublicationDate;
@@ -124,7 +124,8 @@ public class OpenAlexClient {
                     .map(this::toOpenAlexAuthorId)
                     .filter(StringUtils::hasText)
                     .collect(Collectors.joining("|"));
-            if (!StringUtils.hasText(pipeFilter)) continue;
+            if (!StringUtils.hasText(pipeFilter))
+                continue;
             UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
                     appProperties.getOpenalex().getBaseUrl() + "/authors")
                     .queryParam("filter", "openalex_id:" + pipeFilter)
@@ -320,13 +321,16 @@ public class OpenAlexClient {
         // Concepts level > 0 không chứa domain thực trong OpenAlex Works API response —
         // chúng chỉ có display_name/level/score, không có parent hierarchy.
         // Dùng primaryDomain cho chúng là sai vì paper CS về healthcare sẽ khiến
-        // "Pharmacology", "Surgery" (level 1, Medicine) được gán domain "Computer Science".
-        // → Chỉ giữ level 0 concepts (domain gốc như "Computer Science", "Mathematics").
-        //   Specific keywords đã được lấy từ topics phía trên với subfield đúng.
+        // "Pharmacology", "Surgery" (level 1, Medicine) được gán domain "Computer
+        // Science".
+        // → Chỉ giữ level 0 concepts (domain gốc như "Computer Science",
+        // "Mathematics").
+        // Specific keywords đã được lấy từ topics phía trên với subfield đúng.
         if (conceptsNode != null && conceptsNode.isArray()) {
             for (JsonNode node : conceptsNode) {
                 int level = node.path("level").asInt(-1);
-                if (level != 0) continue;
+                if (level != 0)
+                    continue;
                 String term = textOrNull(node.path("display_name"));
                 if (StringUtils.hasText(term) && seen.add(term.toLowerCase().trim())) {
                     keywords.add(new ExternalKeywordInfo(term.trim(), term.trim()));
@@ -357,7 +361,8 @@ public class OpenAlexClient {
                 affiliation = textOrNull(institutions.get(0).path("display_name"));
             }
             String position = textOrNull(authorship.path("author_position")); // "first", "middle", "last"
-            authors.add(new ExternalAuthorInfo(name, "OPENALEX", openAlexId, affiliation != null ? affiliation : "", position));
+            authors.add(new ExternalAuthorInfo(name, "OPENALEX", openAlexId, affiliation != null ? affiliation : "",
+                    position));
         });
         return authors;
     }
@@ -374,8 +379,10 @@ public class OpenAlexClient {
     }
 
     /**
-     * Chuyển UriComponentsBuilder thành URI đã encode đúng 1 lần — tránh double-encoding
-     * khi truyền qua RestClient.uri(String), vốn tự encode lại chuỗi String đầu vào.
+     * Chuyển UriComponentsBuilder thành URI đã encode đúng 1 lần — tránh
+     * double-encoding
+     * khi truyền qua RestClient.uri(String), vốn tự encode lại chuỗi String đầu
+     * vào.
      */
     private URI toUri(UriComponentsBuilder builder) {
         return builder.build().encode().toUri();
@@ -540,8 +547,10 @@ public class OpenAlexClient {
     /**
      * Batch fetch metadata cho nhiều works theo OpenAlex IDs.
      * Sử dụng filter pipe: openalex_id:W1|W2|W3 (tối đa ~50 IDs/request).
-     * IDs không có trong kết quả batch (do OpenAlex merge/alias) sẽ được fetch đơn lẻ qua
-     * /works/{id} — endpoint này hỗ trợ redirect nên lấy được metadata dù ID đã bị gộp.
+     * IDs không có trong kết quả batch (do OpenAlex merge/alias) sẽ được fetch đơn
+     * lẻ qua
+     * /works/{id} — endpoint này hỗ trợ redirect nên lấy được metadata dù ID đã bị
+     * gộp.
      */
     public List<ExternalPaperMetadata> fetchWorksByIds(List<String> openAlexIds) {
         if (openAlexIds == null || openAlexIds.isEmpty()) {
@@ -567,7 +576,8 @@ public class OpenAlexClient {
                     String doi = normalizeDoi(textOrNull(work.path("doi")));
                     LocalDate pubDate = resolvePublicationDate(work);
                     Integer citations = work.path("cited_by_count").isInt()
-                            ? work.path("cited_by_count").asInt() : null;
+                            ? work.path("cited_by_count").asInt()
+                            : null;
                     allResults.add(new ExternalPaperMetadata(
                             title, null, doi, pubDate, citations,
                             List.of(), List.of(), null, null, null, null,
@@ -578,7 +588,8 @@ public class OpenAlexClient {
 
         // Fallback: IDs không có trong kết quả batch → fetch đơn lẻ.
         // /works/{id} theo redirect nên xử lý được cả trường hợp OpenAlex đã merge ID.
-        // sourceIdentifier giữ nguyên ID gốc để mapping trong reference_metadata đúng key.
+        // sourceIdentifier giữ nguyên ID gốc để mapping trong reference_metadata đúng
+        // key.
         Set<String> returnedIds = allResults.stream()
                 .map(ExternalPaperMetadata::sourceIdentifier)
                 .filter(Objects::nonNull)
@@ -602,9 +613,11 @@ public class OpenAlexClient {
 
     /**
      * Fetch metadata cho một work đơn lẻ qua /works/{id}.
-     * Endpoint này hỗ trợ HTTP redirect — dùng để fallback khi batch pipe filter bỏ qua ID
+     * Endpoint này hỗ trợ HTTP redirect — dùng để fallback khi batch pipe filter bỏ
+     * qua ID
      * (thường do OpenAlex đã merge work vào ID khác).
-     * sourceIdentifier trả về là originalId (không phải ID sau redirect) để mapping đúng key.
+     * sourceIdentifier trả về là originalId (không phải ID sau redirect) để mapping
+     * đúng key.
      */
     private ExternalPaperMetadata fetchSingleWorkById(String originalId) {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
@@ -620,7 +633,8 @@ public class OpenAlexClient {
         String doi = normalizeDoi(textOrNull(work.path("doi")));
         LocalDate pubDate = resolvePublicationDate(work);
         Integer citations = work.path("cited_by_count").isInt()
-                ? work.path("cited_by_count").asInt() : null;
+                ? work.path("cited_by_count").asInt()
+                : null;
         if (title == null && pubDate == null && doi == null) {
             return null;
         }
@@ -664,15 +678,16 @@ public class OpenAlexClient {
      * Lấy danh sách papers trích dẫn (citing) một work cụ thể.
      * Sử dụng OpenAlex filter: cites:W...
      *
-     * @param openAlexId   OpenAlex ID của paper gốc (e.g. "W2741809807")
-     * @param sort         "cited_by_count:desc" hoặc "publication_date:desc"
-     * @param yearFrom     Năm bắt đầu (nullable)
-     * @param yearTo       Năm kết thúc (nullable)
-     * @param perPage      Số lượng kết quả tối đa (default 20)
-     * @return Danh sách ExternalPaperMetadata nhẹ (chỉ title, year, doi, citationCount)
+     * @param openAlexId OpenAlex ID của paper gốc (e.g. "W2741809807")
+     * @param sort       "cited_by_count:desc" hoặc "publication_date:desc"
+     * @param yearFrom   Năm bắt đầu (nullable)
+     * @param yearTo     Năm kết thúc (nullable)
+     * @param perPage    Số lượng kết quả tối đa (default 20)
+     * @return Danh sách ExternalPaperMetadata nhẹ (chỉ title, year, doi,
+     *         citationCount)
      */
     public List<ExternalPaperMetadata> fetchCitingWorks(String openAlexId, String sort,
-                                                        Integer yearFrom, Integer yearTo, int perPage) {
+            Integer yearFrom, Integer yearTo, int perPage) {
         if (!StringUtils.hasText(openAlexId)) {
             return List.of();
         }
@@ -711,7 +726,8 @@ public class OpenAlexClient {
             String doi = normalizeDoi(textOrNull(work.path("doi")));
             LocalDate pubDate = resolvePublicationDate(work);
             Integer citations = work.path("cited_by_count").isInt()
-                    ? work.path("cited_by_count").asInt() : null;
+                    ? work.path("cited_by_count").asInt()
+                    : null;
             results.add(new ExternalPaperMetadata(
                     title, null, doi, pubDate, citations,
                     List.of(), List.of(), null, null, null, null,
