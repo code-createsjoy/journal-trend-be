@@ -426,7 +426,7 @@ public class PersonalReportServiceImpl implements PersonalReportService {
             tagCloud.add(KeywordCoOccurrencePoint.builder()
                     .term((String) row[0])
                     .coOccurrenceCount((Long) row[1])
-                    .growthRate(avgTrend != null ? Math.round((avgTrend / 10.0) * 10.0) / 10.0 : 0.0)
+                    .growthRate(avgTrend != null ? Math.round(avgTrend * 10.0) / 10.0 : 0.0)
                     .build());
         }
 
