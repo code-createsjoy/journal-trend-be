@@ -94,7 +94,7 @@ public interface PaperKeywordRepository extends JpaRepository<PaperKeyword, Long
     long countDistinctKeywords();
 
     @Query("""
-        SELECT pk.keyword.term, COUNT(pk.id) 
+        SELECT pk.keyword.term, COUNT(pk.id)
         FROM PaperAuthor pa
         JOIN PaperKeyword pk ON pa.paper.id = pk.paper.id
         WHERE pa.author.id = :authorId
@@ -102,6 +102,18 @@ public interface PaperKeywordRepository extends JpaRepository<PaperKeyword, Long
         ORDER BY COUNT(pk.id) DESC
         """)
     List<Object[]> findTopKeywordsByAuthor(@Param("authorId") Long authorId, Pageable pageable);
+
+    @Query("""
+        SELECT pa.author.id, pk.keyword.keywordId
+        FROM PaperAuthor pa
+        JOIN PaperKeyword pk ON pa.paper.id = pk.paper.id
+        WHERE pa.author.id IN :authorIds
+          AND pk.keyword.keywordId IN :keywordIds
+          AND pa.paper.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+        """)
+    List<Object[]> findAuthorFollowedKeywordPairs(
+            @Param("authorIds") Collection<Long> authorIds,
+            @Param("keywordIds") Collection<Long> keywordIds);
 
     @Query("""
         SELECT pk.keyword.term, YEAR(p.publicationDate), COUNT(p)

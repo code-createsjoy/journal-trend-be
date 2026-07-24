@@ -43,7 +43,7 @@ public class PaperServiceImpl implements PaperService {
 /**
  * Tìm kiếm/lọc: search.
  */
-    public PageResponse<PaperDetailResponse> search(String q, String searchType, Long topicId, Long authorId, Integer fromYear, Integer toYear, String category, Integer minCitations, Long journalId, Pageable pageable) {
+    public PageResponse<PaperDetailResponse> search(String q, String searchType, Long topicId, Long authorId, Integer fromYear, Integer toYear, Integer month, String category, Integer minCitations, Long journalId, Pageable pageable) {
         String query = (q != null && q.isBlank()) ? null : q;
         String cat = (category != null && category.trim().equalsIgnoreCase("all")) ? null : category;
         String type = (searchType != null && searchType.isBlank()) ? null : searchType;
@@ -67,6 +67,7 @@ public class PaperServiceImpl implements PaperService {
                 authorId,
                 fromYear,
                 toYear,
+                month,
                 cat,
                 minCitations,
                 journalId,
