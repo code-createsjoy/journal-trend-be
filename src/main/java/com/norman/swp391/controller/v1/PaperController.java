@@ -31,11 +31,12 @@ public class PaperController {
             @RequestParam(required = false) Long authorId,
             @RequestParam(required = false) Integer fromYear,
             @RequestParam(required = false) Integer toYear,
+            @RequestParam(required = false) Integer month,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) Integer minCitations,
             @RequestParam(required = false) Long journalId,
             @PageableDefault(size = 20) Pageable pageable) {
-        return ApiResponse.ok(paperService.search(q, searchType, topicId, authorId, fromYear, toYear, category, minCitations, journalId, pageable));
+        return ApiResponse.ok(paperService.search(q, searchType, topicId, authorId, fromYear, toYear, month, category, minCitations, journalId, pageable));
     }
 
     /**

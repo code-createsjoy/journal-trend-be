@@ -15,6 +15,28 @@ public interface KeywordRepository extends JpaRepository<Keyword, Long> {
         """)
     List<Keyword> findResearchGapsInDomains(@org.springframework.data.repository.query.Param("domains") java.util.Collection<String> domains, org.springframework.data.domain.Pageable pageable);
 
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT k FROM Keyword k
+        WHERE LOWER(k.domain) = LOWER(:domain)
+          AND k.keywordId NOT IN :excludeIds
+        ORDER BY k.paperCount DESC
+        """)
+    List<Keyword> findHotTopicsByDomain(
+        @org.springframework.data.repository.query.Param("domain") String domain,
+        @org.springframework.data.repository.query.Param("excludeIds") java.util.Collection<Long> excludeIds,
+        org.springframework.data.domain.Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT k FROM Keyword k
+        WHERE LOWER(k.domain) = LOWER(:domain)
+          AND k.keywordId NOT IN :excludeIds
+        ORDER BY k.paperCount ASC
+        """)
+    List<Keyword> findResearchGapsByDomain(
+        @org.springframework.data.repository.query.Param("domain") String domain,
+        @org.springframework.data.repository.query.Param("excludeIds") java.util.Collection<Long> excludeIds,
+        org.springframework.data.domain.Pageable pageable);
+
     @org.springframework.data.jpa.repository.Query("SELECT k FROM Keyword k WHERE LOWER(k.term) IN :terms")
     java.util.List<Keyword> findByTermInIgnoreCase(@org.springframework.data.repository.query.Param("terms") java.util.Collection<String> terms);
 

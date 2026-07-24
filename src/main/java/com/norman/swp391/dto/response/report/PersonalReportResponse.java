@@ -49,6 +49,18 @@ public class PersonalReportResponse {
         private List<AuthorInfluencePoint> bubbleChart;
         private List<KeywordCoOccurrencePoint> tagCloud;
         private List<ResearchGapPoint> researchGaps;
+        private List<FollowedDomain> followedDomains;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FollowedDomain {
+        private String domain;
+        private List<String> followedKeywords;
+        private List<ResearchGapPoint> hotTopics;
+        private List<ResearchGapPoint> researchGaps;
     }
 
     @Data

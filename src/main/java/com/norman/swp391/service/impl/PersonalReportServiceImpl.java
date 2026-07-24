@@ -73,7 +73,7 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                 filterBy, keywordIds, authorIds,
                 followedKeywordIds, followedAuthorIds, followedJournalIds,
                 bookmarkedPaperIds);
-        LandscapeSection landscape = buildLandscapeSection(keywordIds, domains);
+        LandscapeSection landscape = buildLandscapeSection(keywordIds, domains, followKeywords);
 
         PersonalReportResponse.FollowStats followStats = PersonalReportResponse.FollowStats.builder()
                 .keywordCount(followedKeywordIds.size())
@@ -91,17 +91,15 @@ public class PersonalReportServiceImpl implements PersonalReportService {
 
     /** Dựng phần "Xu hướng": line chart số paper/tháng theo keyword follow, bar chart top journal theo domain. */
     private TrendsSection buildTrendsSection(List<Long> keywordIds, Set<String> domains) {
-        // Tính 3 tháng đã hoàn thành + tháng hiện tại đang cập nhật
-        YearMonth lastCompleted = YearMonth.now().minusMonths(1);
+        // Chỉ lấy 3 tháng đã hoàn thành, không lấy tháng hiện tại
+        YearMonth now = YearMonth.now();
         List<Integer> yearMonths = new ArrayList<>();
-        for (int i = 2; i >= 0; i--) {
-            YearMonth ym = lastCompleted.minusMonths(i);
+        for (int i = 3; i >= 1; i--) {
+            YearMonth ym = now.minusMonths(i);
             yearMonths.add(ym.getYear() * 100 + ym.getMonthValue());
         }
-        YearMonth current = YearMonth.now();
-        yearMonths.add(current.getYear() * 100 + current.getMonthValue());
 
-        // Line Chart: Toàn bộ keyword user đang follow (tối đa 20), frontend tự chọn hiển thị
+        // Line Chart: Toàn bộ keyword user đang follow (tối đa 20), tự chọn hiển thị
         List<KeywordTrendPoint> lineChart = new ArrayList<>();
         List<Object[]> monthlyRows = paperKeywordRepository.countMonthlyPapersByKeywordIds(
                 keywordIds, yearMonths);
@@ -375,44 +373,34 @@ public class PersonalReportServiceImpl implements PersonalReportService {
      * Dựng phần "Toàn cảnh lĩnh vực": bubble chart tác giả dẫn đầu theo keyword follow,
      * word cloud keyword hay xuất hiện cùng nhau, và các keyword đang có ít nghiên cứu (research gap).
      */
-    private LandscapeSection buildLandscapeSection(List<Long> keywordIds, Set<String> domains) {
+    private LandscapeSection buildLandscapeSection(List<Long> keywordIds, Set<String> domains, List<FollowKeyword> followKeywords) {
         // Bubble Chart: Tác giả dẫn đầu
         List<AuthorInfluencePoint> bubbleChart = new ArrayList<>();
         List<Object[]> authorRows = paperAuthorRepository.findTopAuthorsByKeywordIds(keywordIds, PageRequest.of(0, 6));
 
-        // Gom top-keyword-term của tất cả author trước, tra keyword theo batch 1 lần duy nhất
-        // (trước đây gọi keywordRepository.findByTerm() riêng cho từng term -> tới ~60 query phụ/lần load report).
-        Map<Long, List<String>> topTermsByAuthor = new HashMap<>();
-        Set<String> allTerms = new HashSet<>();
-        for (Object[] row : authorRows) {
-            Long authorId = ((Author) row[0]).getId();
-            List<Object[]> topKws = paperKeywordRepository.findTopKeywordsByAuthor(authorId, PageRequest.of(0, 10));
-            List<String> terms = topKws.stream().map(kwRow -> (String) kwRow[0]).toList();
-            topTermsByAuthor.put(authorId, terms);
-            allTerms.addAll(terms);
+        // Đếm DISTINCT followed keywords thực sự xuất hiện trong papers của từng author (1 query batch)
+        List<Long> authorIds = authorRows.stream().map(row -> ((Author) row[0]).getId()).toList();
+        Map<Long, Long> matchingKeywordCountByAuthor = new HashMap<>();
+        if (!authorIds.isEmpty()) {
+            List<Object[]> pairs = paperKeywordRepository.findAuthorFollowedKeywordPairs(authorIds, keywordIds);
+            pairs.stream()
+                    .collect(Collectors.groupingBy(
+                            row -> (Long) row[0],
+                            Collectors.mapping(row -> (Long) row[1], Collectors.toSet())))
+                    .forEach((authorId, kwIds) -> matchingKeywordCountByAuthor.put(authorId, (long) kwIds.size()));
         }
-        Set<Long> targetKeywordIds = new HashSet<>(keywordIds);
-        Set<String> overlapTerms = allTerms.isEmpty()
-                ? Set.of()
-                : keywordRepository.findByTermIn(allTerms).stream()
-                        .filter(k -> targetKeywordIds.contains(k.getKeywordId()))
-                        .map(Keyword::getTerm)
-                        .collect(Collectors.toSet());
 
         for (Object[] row : authorRows) {
             Author author = (Author) row[0];
             Long count = (Long) row[1];
-
-            long overlapCount = topTermsByAuthor.getOrDefault(author.getId(), List.of()).stream()
-                    .filter(overlapTerms::contains)
-                    .count();
+            long matchCount = matchingKeywordCountByAuthor.getOrDefault(author.getId(), 1L);
 
             bubbleChart.add(AuthorInfluencePoint.builder()
                     .authorId(author.getId())
                     .authorName(author.getName())
                     .paperCount(count)
                     .mainDomain(author.getAffiliation() != null ? author.getAffiliation() : "Academic Institute")
-                    .matchingKeywordCount((int) Math.max(overlapCount, 1))
+                    .matchingKeywordCount((int) matchCount)
                     .hIndex(author.getHIndex())
                     .citationCount(author.getCitationCount())
                     .build());
@@ -430,7 +418,7 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                     .build());
         }
 
-        // Khoảng trống nghiên cứu: Keyword ít bài nhất trong domain
+        // Khoảng trống nghiên cứu (cũ): Keyword ít bài nhất trong domain — giữ lại để tương thích
         List<ResearchGapPoint> researchGaps = new ArrayList<>();
         List<Keyword> gapKeywords = keywordRepository.findResearchGapsInDomains(domains, PageRequest.of(0, 5));
         for (Keyword k : gapKeywords) {
@@ -440,10 +428,58 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                     .build());
         }
 
+        // followedDomains: nhóm keyword follow theo domain, mỗi nhóm có hotTopics + researchGaps riêng
+        List<PersonalReportResponse.FollowedDomain> followedDomains = new ArrayList<>();
+        if (!followKeywords.isEmpty()) {
+            // Nhóm keyword follow theo domain
+            Map<String, List<FollowKeyword>> byDomain = new LinkedHashMap<>();
+            for (FollowKeyword fk : followKeywords) {
+                String domain = fk.getKeyword().getDomain();
+                if (domain == null || domain.isBlank()) continue;
+                byDomain.computeIfAbsent(domain, d -> new ArrayList<>()).add(fk);
+            }
+
+            for (Map.Entry<String, List<FollowKeyword>> entry : byDomain.entrySet()) {
+                String domain = entry.getKey();
+                List<FollowKeyword> fks = entry.getValue();
+
+                List<String> followedTerms = fks.stream()
+                        .map(fk -> fk.getKeyword().getTerm())
+                        .collect(Collectors.toList());
+                List<Long> excludeIds = fks.stream()
+                        .map(fk -> fk.getKeyword().getKeywordId())
+                        .collect(Collectors.toList());
+
+                List<Keyword> hotKws = keywordRepository.findHotTopicsByDomain(domain, excludeIds, PageRequest.of(0, 5));
+                List<ResearchGapPoint> hotTopics = hotKws.stream()
+                        .map(k -> ResearchGapPoint.builder()
+                                .term(k.getTerm())
+                                .paperCount((long) k.getPaperCount())
+                                .build())
+                        .collect(Collectors.toList());
+
+                List<Keyword> gapKws = keywordRepository.findResearchGapsByDomain(domain, excludeIds, PageRequest.of(0, 5));
+                List<ResearchGapPoint> gaps = gapKws.stream()
+                        .map(k -> ResearchGapPoint.builder()
+                                .term(k.getTerm())
+                                .paperCount((long) k.getPaperCount())
+                                .build())
+                        .collect(Collectors.toList());
+
+                followedDomains.add(PersonalReportResponse.FollowedDomain.builder()
+                        .domain(domain)
+                        .followedKeywords(followedTerms)
+                        .hotTopics(hotTopics)
+                        .researchGaps(gaps)
+                        .build());
+            }
+        }
+
         return LandscapeSection.builder()
                 .bubbleChart(bubbleChart)
                 .tagCloud(tagCloud)
                 .researchGaps(researchGaps)
+                .followedDomains(followedDomains)
                 .build();
     }
 }
