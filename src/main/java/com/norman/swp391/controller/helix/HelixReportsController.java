@@ -31,12 +31,14 @@ public class HelixReportsController {
     /** Báo cáo cá nhân hóa của user hiện tại (xu hướng, gợi ý đọc, toàn cảnh lĩnh vực). */
     @GetMapping("/personal")
     public PersonalReportResponse getPersonalReport(
-            @RequestParam(defaultValue = "ALL") String filterBy) {
+            @RequestParam(defaultValue = "ALL") String filterBy,
+            @RequestParam(defaultValue = "3") int months) {
         Long userId = com.norman.swp391.security.SecurityUtils.getCurrentUserId();
         if (userId == null) {
             throw new com.norman.swp391.exception.UnauthorizedException("Not authenticated");
         }
-        return personalReportService.generatePersonalReport(userId, filterBy);
+        int clampedMonths = Math.min(Math.max(months, 2), 6);
+        return personalReportService.generatePersonalReport(userId, filterBy, clampedMonths);
     }
 
     @GetMapping(value = "/topic-trends.csv", produces = "text/csv")
