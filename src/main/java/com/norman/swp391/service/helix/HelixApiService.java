@@ -285,7 +285,7 @@ public class HelixApiService {
      * Liệt kê các bài báo của một tác giả cụ thể.
      */
     public List<HelixPaper> listAuthorPapers(String authorId, Integer limit) {
-        int size = limit != null && limit > 0 ? Math.min(limit, 100) : 50;
+        int size = limit != null && limit > 0 ? Math.min(limit, 500) : 200;
         var page = authorService.getPapersByAuthor(Long.parseLong(authorId), PageRequest.of(0, size));
         List<Long> paperIds = page.getContent().stream().map(PaperResponse::getId).toList();
         Map<Long, List<HelixAuthorRef>> refs = loadAuthorRefsByPaper(paperIds);
