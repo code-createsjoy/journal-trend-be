@@ -63,7 +63,9 @@ public class AuthorServiceImpl implements AuthorService {
  */
     public PageResponse<PaperResponse> getPapersByAuthor(Long authorId, Pageable pageable) {
         authorRepository.findById(authorId).orElseThrow(() -> new ResourceNotFoundException("Author", authorId));
-        Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        Pageable unsorted = (pageable != null && pageable.isPaged())
+                ? PageRequest.of(pageable.getPageNumber(), pageable.getPageSize())
+                : Pageable.unpaged();
         Page<Paper> page = paperAuthorRepository.findActivePapersByAuthorId(authorId, unsorted);
         return PageResponse.from(page, PaperMapper.toResponseList(page.getContent()));
     }

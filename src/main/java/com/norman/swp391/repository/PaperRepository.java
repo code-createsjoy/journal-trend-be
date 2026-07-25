@@ -143,6 +143,7 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
               ))
               AND (:fromYear IS NULL OR YEAR(p.publicationDate) >= :fromYear)
               AND (:toYear IS NULL OR YEAR(p.publicationDate) <= :toYear)
+              AND (:month IS NULL OR MONTH(p.publicationDate) = :month)
               AND (:category IS NULL OR EXISTS (
                   SELECT 1 FROM PaperKeyword pk3
                   WHERE pk3.paper = p AND LOWER(pk3.keyword.domain) = LOWER(:category)
@@ -159,6 +160,7 @@ public interface PaperRepository extends JpaRepository<Paper, Long> {
             @Param("authorId") Long authorId,
             @Param("fromYear") Integer fromYear,
             @Param("toYear") Integer toYear,
+            @Param("month") Integer month,
             @Param("category") String category,
             @Param("minCitations") Integer minCitations,
             @Param("journalId") Long journalId,
