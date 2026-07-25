@@ -41,7 +41,7 @@ public class PersonalReportServiceImpl implements PersonalReportService {
      */
     @Override
     @Transactional(readOnly = true)
-    public PersonalReportResponse generatePersonalReport(Long userId, String filterBy) {
+    public PersonalReportResponse generatePersonalReport(Long userId, String filterBy, int months) {
         List<FollowKeyword> followKeywords = followKeywordRepository.findByUserId(userId);
         List<FollowAuthor> followAuthors = followAuthorRepository.findByUserId(userId);
         List<FollowJournal> followJournals = followJournalRepository.findByUserId(userId);
@@ -68,7 +68,7 @@ public class PersonalReportServiceImpl implements PersonalReportService {
 
         Set<Long> bookmarkedPaperIds = new HashSet<>(collectionPaperRepository.findPaperIdsByUserId(userId));
 
-        TrendsSection trends = buildTrendsSection(keywordIds, domains);
+        TrendsSection trends = buildTrendsSection(keywordIds, domains, months);
         List<RecommendedPaper> recommendations = buildRecommendationsSection(
                 filterBy, keywordIds, authorIds,
                 followedKeywordIds, followedAuthorIds, followedJournalIds,
@@ -90,11 +90,11 @@ public class PersonalReportServiceImpl implements PersonalReportService {
     }
 
     /** Dựng phần "Xu hướng": line chart số paper/tháng theo keyword follow, bar chart top journal theo domain. */
-    private TrendsSection buildTrendsSection(List<Long> keywordIds, Set<String> domains) {
-        // Chỉ lấy 3 tháng đã hoàn thành, không lấy tháng hiện tại
+    private TrendsSection buildTrendsSection(List<Long> keywordIds, Set<String> domains, int months) {
+        // Lấy N tháng đã hoàn thành gần nhất, không lấy tháng hiện tại
         YearMonth now = YearMonth.now();
         List<Integer> yearMonths = new ArrayList<>();
-        for (int i = 3; i >= 1; i--) {
+        for (int i = months; i >= 1; i--) {
             YearMonth ym = now.minusMonths(i);
             yearMonths.add(ym.getYear() * 100 + ym.getMonthValue());
         }
