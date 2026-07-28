@@ -85,7 +85,6 @@ public class HelixApiService {
                 .fullName(request.name())
                 .email(request.email())
                 .password(request.password())
-                .role(UserRole.RESEARCHER)
                 .build());
         return new HelixAuthSession(toHelixUser(user), null, null);
     }

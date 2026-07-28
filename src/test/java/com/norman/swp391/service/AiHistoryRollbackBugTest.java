@@ -44,7 +44,7 @@ class AiHistoryRollbackBugTest {
                 .email("rollback-bug-test@example.com")
                 .password("password123")
                 .fullName("Rollback Bug Test User")
-                .role(UserRole.RESEARCHER)
+                .role(UserRole.USER)
                 .status(UserStatus.ACTIVE)
                 .enabled(true)
                 .verified(true)
