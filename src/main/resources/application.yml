@@ -77,7 +77,7 @@ app:
     trending-consecutive-months: ${TRENDING_CONSECUTIVE_MONTHS:3}
     max-pages: ${SYNC_MAX_PAGES:40}
     max-papers-per-run: ${SYNC_MAX_PAPERS_PER_RUN:1000}
-    from-publication-date: ${SYNC_FROM_PUBLICATION_DATE:2026-04-01}
+    from-publication-date: ${SYNC_FROM_PUBLICATION_DATE:2025-12-01}
     ingest-batch-size: ${SYNC_INGEST_BATCH_SIZE:25}
     enrich-on-sync: ${SYNC_ENRICH_ON_SYNC:false}
     enrich-batch-size: ${SYNC_ENRICH_BATCH_SIZE:20}
@@ -125,12 +125,12 @@ app:
     early-stopping-enabled: ${SYNC_EARLY_STOPPING:true}
     early-stop-consecutive-empty-pages: ${SYNC_EARLY_STOP_PAGES:3}
     forecast-cron: ${FORECAST_CRON:0 0 4 1 * *}
-    forecast-min-months: ${FORECAST_MIN_MONTHS:6}
-    forecast-history-window: ${FORECAST_HISTORY_WINDOW:12}
+    forecast-min-months: ${FORECAST_MIN_MONTHS:4}
+    forecast-history-window: ${FORECAST_HISTORY_WINDOW:6}
     forecast-horizon: ${FORECAST_HORIZON:12}
     forecast-max-keywords: ${FORECAST_MAX_KEYWORDS:200}
-    forecast-weight-slope: ${FORECAST_WEIGHT_SLOPE:0.5}
-    forecast-weight-acc: ${FORECAST_WEIGHT_ACC:0.3}
+    forecast-weight-slope: ${FORECAST_WEIGHT_SLOPE:0.6}
+    forecast-weight-acc: ${FORECAST_WEIGHT_ACC:0.2}
     forecast-weight-volume: ${FORECAST_WEIGHT_VOLUME:0.2}
     max-papers-for-collection-analysis: ${AI_MAX_PAPERS_PER_COLLECTION_ANALYSIS:30}
     search-queries:

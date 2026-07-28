@@ -304,6 +304,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
         List<PublicationTrend> recentDesc = publicationTrendRepository
             .findByKeywordIdOrderByYearDescMonthDesc(keywordId)
             .stream()
+            .filter(pt -> !isCurrentMonth(pt))   // bỏ tháng đang chạy (khuyết ngày → thấp giả)
             .limit(historyWindow)
             .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         Collections.reverse(recentDesc);
@@ -311,17 +312,32 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
     }
 
     /**
-     * Cắt {@code forecast-history-window} tháng GẦN NHẤT từ list lịch sử đã sắp tăng dần.
+     * Cắt {@code forecast-history-window} tháng GẦN NHẤT từ list lịch sử đã sắp tăng dần,
+     * sau khi loại tháng đang chạy (điểm cuối, khuyết ngày). Với cửa sổ ngắn, tháng khuyết
+     * này có đòn bẩy lớn lên slope nên phải bỏ trước khi hồi quy.
      * Dùng trong job (list được gom sẵn từ 1 query) để tránh N+1.
      */
     private List<PublicationTrend> recentWindow(List<PublicationTrend> ascHistory) {
         if (ascHistory == null || ascHistory.isEmpty()) {
             return List.of();
         }
+        List<PublicationTrend> completed = ascHistory;
+        if (isCurrentMonth(ascHistory.get(ascHistory.size() - 1))) {
+            completed = ascHistory.subList(0, ascHistory.size() - 1);
+        }
+        if (completed.isEmpty()) {
+            return List.of();
+        }
         int historyWindow = appProperties.getSync().getForecastHistoryWindow();
-        int size = ascHistory.size();
+        int size = completed.size();
         int from = Math.max(0, size - historyWindow);
-        return ascHistory.subList(from, size);
+        return completed.subList(from, size);
+    }
+
+    /** Tháng đang chạy luôn khuyết ngày → loại khỏi chuỗi hồi quy/biểu đồ để không kéo lệch slope. */
+    private boolean isCurrentMonth(PublicationTrend pt) {
+        YearMonth now = YearMonth.now();
+        return pt.getYear() == now.getYear() && pt.getMonth() == now.getMonthValue();
     }
 
     // ────────────────────────────────────────────────────────

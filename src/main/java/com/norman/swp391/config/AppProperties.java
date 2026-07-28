@@ -158,17 +158,17 @@ public class AppProperties {
         /** Cron cho job dự báo hot topic — mặc định 4AM ngày 1 hàng tháng. */
         private String forecastCron = "0 0 4 1 * *";
         /** Số tháng lịch sử tối thiểu để tính forecast. */
-        private int forecastMinMonths = 6;
+        private int forecastMinMonths = 4;
         /** Số tháng lịch sử tối đa dùng cho hồi quy / biểu đồ. */
-        private int forecastHistoryWindow = 12;
+        private int forecastHistoryWindow = 6;
         /** Số tháng dự báo về phía trước (pre-compute tối đa để API cắt theo tham số months). */
         private int forecastHorizon = 12;
         /** Số keyword tối đa lưu vào bảng forecast. */
         private int forecastMaxKeywords = 200;
-        /** Trọng số slope trong sTPS (mặc định 0.5). */
-        private double forecastWeightSlope = 0.5;
-        /** Trọng số acceleration trong sTPS (mặc định 0.3). */
-        private double forecastWeightAcc = 0.3;
+        /** Trọng số slope trong sTPS (mặc định 0.6). */
+        private double forecastWeightSlope = 0.6;
+        /** Trọng số acceleration trong sTPS (mặc định 0.2). */
+        private double forecastWeightAcc = 0.2;
         /** Trọng số volume trong sTPS (mặc định 0.2). */
         private double forecastWeightVolume = 0.2;
         /** Cap số paper đưa vào 1 lần phân tích AI theo collection (kiểm soát chi phí/token). */
