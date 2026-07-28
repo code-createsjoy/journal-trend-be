@@ -63,9 +63,13 @@ public class AuthServiceImpl implements AuthService {
     private final EmailVerificationService emailVerificationService;
 
     @Override
-    @Transactional
 /**
  * Đăng ký tài khoản mới.
+ * Cố ý KHÔNG bọc @Transactional quanh toàn bộ method: userRepository.save() phải commit
+ * ngay (transaction riêng của Spring Data) trước khi tạo verification token. Token có FK
+ * tới app_users, nếu cả hai bước nằm chung 1 transaction đang mở (hoặc token dùng
+ * REQUIRES_NEW để tách riêng) thì insert token sẽ phải chờ khóa X trên dòng user vừa
+ * insert nhưng chưa commit — tự deadlock với chính transaction ngoài đang tạm dừng.
  */
     public UserResponse register(RegisterRequest request) {
         if (userRepository.existsByEmailIgnoreCase(request.getEmail())) {
@@ -82,10 +86,18 @@ public class AuthServiceImpl implements AuthService {
                 .verified(false)
                 .build();
         user = userRepository.save(user);
-        
-        EmailVerificationToken token = emailVerificationService.createVerificationToken(user);
-        emailService.sendVerificationEmail(user.getEmail(), user.getFullName(), token.getToken());
-        
+
+        // User đã commit ở trên. Tạo token + gửi mail xác thực được bọc try-catch riêng:
+        // nếu bước này lỗi (DB token table, mail...), tài khoản vừa tạo vẫn giữ nguyên
+        // thay vì rollback toàn bộ và trả 500 cho FE. User có thể xin gửi lại email xác
+        // thực qua resendVerificationToken().
+        try {
+            EmailVerificationToken token = emailVerificationService.createVerificationToken(user);
+            emailService.sendVerificationEmail(user.getEmail(), user.getFullName(), token.getToken());
+        } catch (Exception e) {
+            log.error("Failed to create/send verification token for user {}", user.getEmail(), e);
+        }
+
         return UserMapper.toResponse(user);
     }
 
