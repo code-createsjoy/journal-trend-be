@@ -9,7 +9,6 @@ import com.norman.swp391.exception.ConflictException;
 import com.norman.swp391.service.FutureTrendForecastService;
 import com.norman.swp391.service.KeywordTrendService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,9 +39,7 @@ public class TrendController {
 
     /**
      * Danh sách top keyword có tiềm năng cao nhất (mặc định 10).
-     * Student không có quyền truy cập.
      */
-    @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @GetMapping("/forecast")
     public ApiResponse<List<ForecastListResponse>> getTopForecasts(
             @RequestParam(defaultValue = "10") int limit,
@@ -52,9 +49,7 @@ public class TrendController {
 
     /**
      * Chi tiết dự báo 1 keyword kèm lịch sử + N tháng tới (tham số months, 1-12).
-     * Student không có quyền truy cập.
      */
-    @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @GetMapping("/forecast/{keywordId}")
     public ApiResponse<ForecastDetailResponse> getForecastDetail(
             @PathVariable Long keywordId,
@@ -64,9 +59,7 @@ public class TrendController {
 
     /**
      * Trạng thái nút "Run Forecast": đã có bài báo mới kể từ lần dự báo gần nhất hay chưa.
-     * Student không có quyền truy cập.
      */
-    @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @GetMapping("/forecast/status")
     public ApiResponse<ForecastStatusResponse> getForecastStatus() {
         return ApiResponse.ok("Fetch forecast status successfully", forecastService.getForecastStatus());
@@ -75,9 +68,8 @@ public class TrendController {
     /**
      * Chạy lại job dự báo hot topic theo yêu cầu (nút "Run Forecast" trên UI).
      * Chỉ chạy được khi có bài báo mới kể từ lần dự báo gần nhất — tránh tính lại vô ích
-     * trên cùng một tập dữ liệu. Student không có quyền truy cập.
+     * trên cùng một tập dữ liệu.
      */
-    @PreAuthorize("hasAnyRole('LECTURER', 'RESEARCHER', 'ADMIN', 'SUPER_ADMIN')")
     @PostMapping("/forecast/run")
     public ApiResponse<List<ForecastListResponse>> runForecast(
             @RequestParam(defaultValue = "10") int limit,
