@@ -2,6 +2,7 @@ package com.norman.swp391.exception;
 
 import com.norman.swp391.dto.common.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -106,6 +107,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException ex) {
         log.debug("Client disconnected before response could be written: {}", ex.getMessage());
+    }
+
+    /**
+     * Lỗi tầng dữ liệu (mất kết nối DB, vi phạm ràng buộc, bảng/cột thiếu...) — báo rõ cho FE
+     * đây là sự cố hạ tầng tạm thời thay vì lẫn vào "An unexpected error occurred" chung chung,
+     * giúp phân biệt với bug logic khi debug theo be_fix_guide.md.
+     */
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataAccess(DataAccessException ex) {
+        log.error("Database error", ex);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(error("Database is temporarily unavailable. Please try again later."));
     }
 
     /**
