@@ -155,8 +155,14 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
             List<ForecastMonthDto> forecastMonths = buildForecast(m.history(), m.slope(), m.intercept());
             int predictedTotal = forecastMonths.stream().mapToInt(ForecastMonthDto::getPaperCount).sum();
 
-            double currentTotal = Math.max(1.0, m.keyword().getPaperCount());
-            double growthRate   = (predictedTotal / currentTotal) * 100.0;
+            // avgMonthlyHistory: nhịp trung bình gần đây, dùng làm baseline cho Net Growth Rate ở
+            // read-time (baseline_N = avgMonthly * N). Tính 1 lần ở đây để tránh N+1 lúc đọc.
+            double avgMonthly = m.history().stream()
+                .mapToInt(PublicationTrend::getPaperCount)
+                .average()
+                .orElse(0.0);
+            double baselineFullHorizon = Math.max(1.0, avgMonthly * forecastMonths.size());
+            double growthRate = (predictedTotal - baselineFullHorizon) / baselineFullHorizon * 100.0;
 
             String category = ForecastCategory.classify(sTPS, m.acc()).name();
 
@@ -165,6 +171,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
                 .potentialScore(bd(sTPS, 2))
                 .predictedPapersTotal(predictedTotal)
                 .predictedGrowthRate(bd(growthRate, 2))
+                .avgMonthlyHistory(bd(avgMonthly, 4))
                 .forecastReason(category)
                 .forecastMonthsJson(toJson(forecastMonths))
                 .calculatedAt(jobStart)
@@ -199,7 +206,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
             .map(f -> {
                 List<ForecastMonthDto> sliced = sliceMonths(fromJson(f.getForecastMonthsJson()), m);
                 int predicted = sliced.stream().mapToInt(ForecastMonthDto::getPaperCount).sum();
-                double current = Math.max(1.0, f.getKeyword().getPaperCount());
+                double netGrowth = netGrowthRate(f.getAvgMonthlyHistory(), sliced.size(), predicted);
                 return ForecastListResponse.builder()
                     .keywordId(f.getKeyword().getKeywordId())
                     .term(f.getKeyword().getTerm())
@@ -207,7 +214,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
                     .potentialScore(f.getPotentialScore())          // độc lập với months → giữ nguyên
                     .predictedPapers(predicted)
                     .forecastMonthsCount(sliced.size())
-                    .predictedGrowthRate(bd(predicted / current * 100.0, 2))
+                    .predictedGrowthRate(bd(netGrowth, 2))
                     .forecastReason(f.getForecastReason())          // độc lập với months → giữ nguyên
                     .currentPaperCount(f.getKeyword().getPaperCount())
                     .build();
@@ -237,7 +244,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
 
         List<ForecastMonthDto> forecastMonths = sliceMonths(fromJson(forecast.getForecastMonthsJson()), m);
         int predicted = forecastMonths.stream().mapToInt(ForecastMonthDto::getPaperCount).sum();
-        double current = Math.max(1.0, forecast.getKeyword().getPaperCount());
+        double netGrowth = netGrowthRate(forecast.getAvgMonthlyHistory(), forecastMonths.size(), predicted);
 
         return ForecastDetailResponse.builder()
             .keywordId(forecast.getKeyword().getKeywordId())
@@ -246,7 +253,7 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
             .potentialScore(forecast.getPotentialScore())
             .predictedPapers(predicted)
             .forecastMonthsCount(forecastMonths.size())
-            .predictedGrowthRate(bd(predicted / current * 100.0, 2))
+            .predictedGrowthRate(bd(netGrowth, 2))
             .forecastReason(forecast.getForecastReason())
             .historicalMonths(historical)
             .forecastMonths(forecastMonths)
@@ -437,6 +444,18 @@ public class FutureTrendForecastServiceImpl implements FutureTrendForecastServic
 
     private BigDecimal bd(double value, int scale) {
         return BigDecimal.valueOf(value).setScale(scale, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Net Growth Rate = (predicted_N - baseline_N) / baseline_N * 100, với
+     * baseline_N = max(1.0, avgMonthlyHistory * months). So dự báo N tháng với "kỳ vọng nếu giữ
+     * nhịp trung bình gần đây" — cho phép âm, co giãn đúng theo N (khác việc so với tích lũy
+     * all-time như code cũ). avgMonthlyHistory null (bản ghi cũ trước migration) → baseline = 1.0.
+     */
+    private double netGrowthRate(BigDecimal avgMonthlyHistory, int months, int predicted) {
+        double avg = avgMonthlyHistory == null ? 0.0 : avgMonthlyHistory.doubleValue();
+        double baseline = Math.max(1.0, avg * months);
+        return (predicted - baseline) / baseline * 100.0;
     }
 
     private String toJson(List<ForecastMonthDto> months) {

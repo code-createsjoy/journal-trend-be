@@ -50,6 +50,12 @@ public class FutureTrendForecast {
     @Column(name = "predicted_growth_rate", nullable = false, precision = 10, scale = 2)
     private BigDecimal predictedGrowthRate;
 
+    // Trung bình paperCount/tháng trên cửa sổ lịch sử đã chốt số (recentWindow, đã bỏ tháng đang
+    // chạy) — precompute trong job để read-time chỉ cần nhân với N (tránh N+1 query lịch sử).
+    // Bản ghi cũ (trước migration) = null; đọc phải guard null → coi như 0 (baseline fallback 1.0).
+    @Column(name = "avg_monthly_history", precision = 12, scale = 4)
+    private BigDecimal avgMonthlyHistory;
+
     // Ma ForecastCategory (EARLY_BOOM / BREAKOUT / STEADY) — ASCII, an toan voi cot khong Unicode.
     @Column(name = "forecast_reason", nullable = false, length = 30)
     private String forecastReason;
