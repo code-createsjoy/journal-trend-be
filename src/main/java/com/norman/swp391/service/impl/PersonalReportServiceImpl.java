@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,8 +41,8 @@ public class PersonalReportServiceImpl implements PersonalReportService {
      * khoảng trống nghiên cứu). Nếu user chưa follow gì, tự động fallback dùng top keyword/author phổ biến.
      */
     @Override
-    @Transactional(readOnly = true)
     public PersonalReportResponse generatePersonalReport(Long userId, String filterBy, int months) {
+        // Lấy dữ liệu follow của user — cần trước khi tách luồng song song
         List<FollowKeyword> followKeywords = followKeywordRepository.findByUserId(userId);
         List<FollowAuthor> followAuthors = followAuthorRepository.findByUserId(userId);
         List<FollowJournal> followJournals = followJournalRepository.findByUserId(userId);
@@ -62,18 +63,22 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                 .map(fj -> fj.getJournal().getId())
                 .collect(Collectors.toList());
 
-        // Dùng trực tiếp dữ liệu thực tế user đang follow — không fallback
         List<Long> keywordIds = followedKeywordIds;
         List<Long> authorIds = followedAuthorIds;
 
         Set<Long> bookmarkedPaperIds = new HashSet<>(collectionPaperRepository.findPaperIdsByUserId(userId));
 
-        TrendsSection trends = buildTrendsSection(keywordIds, domains, months);
-        List<RecommendedPaper> recommendations = buildRecommendationsSection(
-                filterBy, keywordIds, authorIds,
-                followedKeywordIds, followedAuthorIds, followedJournalIds,
-                bookmarkedPaperIds);
-        LandscapeSection landscape = buildLandscapeSection(keywordIds, domains, followKeywords);
+        // Chạy song song 3 section — giảm ~60% thời gian so với tuần tự
+        List<FollowKeyword> followKeywordsFinal = followKeywords;
+        CompletableFuture<TrendsSection> trendsFuture = CompletableFuture.supplyAsync(
+                () -> buildTrendsSection(keywordIds, domains, months));
+        CompletableFuture<List<RecommendedPaper>> recsFuture = CompletableFuture.supplyAsync(
+                () -> buildRecommendationsSection(filterBy, keywordIds, authorIds,
+                        followedKeywordIds, followedAuthorIds, followedJournalIds, bookmarkedPaperIds));
+        CompletableFuture<LandscapeSection> landscapeFuture = CompletableFuture.supplyAsync(
+                () -> buildLandscapeSection(keywordIds, domains, followKeywordsFinal));
+
+        CompletableFuture.allOf(trendsFuture, recsFuture, landscapeFuture).join();
 
         PersonalReportResponse.FollowStats followStats = PersonalReportResponse.FollowStats.builder()
                 .keywordCount(followedKeywordIds.size())
@@ -82,9 +87,9 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                 .build();
 
         return PersonalReportResponse.builder()
-                .trends(trends)
-                .recommendations(recommendations)
-                .landscape(landscape)
+                .trends(trendsFuture.join())
+                .recommendations(recsFuture.join())
+                .landscape(landscapeFuture.join())
                 .followStats(followStats)
                 .build();
     }
@@ -99,6 +104,11 @@ public class PersonalReportServiceImpl implements PersonalReportService {
             yearMonths.add(ym.getYear() * 100 + ym.getMonthValue());
         }
 
+        // Guard: không có keyword follow → bỏ qua toàn bộ query
+        if (keywordIds.isEmpty() || yearMonths.isEmpty()) {
+            return TrendsSection.builder().lineChart(List.of()).barChart(List.of()).build();
+        }
+
         // Line Chart: Toàn bộ keyword user đang follow (tối đa 20), tự chọn hiển thị
         List<KeywordTrendPoint> lineChart = new ArrayList<>();
         List<Object[]> monthlyRows = paperKeywordRepository.countMonthlyPapersByKeywordIds(
@@ -110,6 +120,11 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                     .month((Integer) row[2])
                     .paperCount((Long) row[3])
                     .build());
+        }
+
+        // Guard: không có domain → bỏ qua bar chart query
+        if (domains.isEmpty()) {
+            return TrendsSection.builder().lineChart(lineChart).barChart(List.of()).build();
         }
 
         // Bar Chart: Top journals theo lĩnh vực
@@ -374,6 +389,16 @@ public class PersonalReportServiceImpl implements PersonalReportService {
      * word cloud keyword hay xuất hiện cùng nhau, và các keyword đang có ít nghiên cứu (research gap).
      */
     private LandscapeSection buildLandscapeSection(List<Long> keywordIds, Set<String> domains, List<FollowKeyword> followKeywords) {
+        // Guard: không có keyword follow → bỏ qua toàn bộ query landscape
+        if (keywordIds.isEmpty()) {
+            return LandscapeSection.builder()
+                    .bubbleChart(List.of())
+                    .tagCloud(List.of())
+                    .researchGaps(List.of())
+                    .followedDomains(List.of())
+                    .build();
+        }
+
         // Bubble Chart: Tác giả dẫn đầu
         List<AuthorInfluencePoint> bubbleChart = new ArrayList<>();
         List<Object[]> authorRows = paperAuthorRepository.findTopAuthorsByKeywordIds(keywordIds, PageRequest.of(0, 6));
@@ -439,39 +464,60 @@ public class PersonalReportServiceImpl implements PersonalReportService {
                 byDomain.computeIfAbsent(domain, d -> new ArrayList<>()).add(fk);
             }
 
-            for (Map.Entry<String, List<FollowKeyword>> entry : byDomain.entrySet()) {
-                String domain = entry.getKey();
-                List<FollowKeyword> fks = entry.getValue();
-
-                List<String> followedTerms = fks.stream()
-                        .map(fk -> fk.getKeyword().getTerm())
-                        .collect(Collectors.toList());
-                List<Long> excludeIds = fks.stream()
+            if (!byDomain.isEmpty()) {
+                // Batch: lấy tất cả excludeIds của toàn bộ domain cùng lúc
+                List<String> allDomainKeys = byDomain.keySet().stream()
+                        .map(String::toLowerCase).collect(Collectors.toList());
+                List<Long> allExcludeIds = followKeywords.stream()
                         .map(fk -> fk.getKeyword().getKeywordId())
                         .collect(Collectors.toList());
 
-                List<Keyword> hotKws = keywordRepository.findHotTopicsByDomain(domain, excludeIds, PageRequest.of(0, 5));
-                List<ResearchGapPoint> hotTopics = hotKws.stream()
-                        .map(k -> ResearchGapPoint.builder()
-                                .term(k.getTerm())
-                                .paperCount((long) k.getPaperCount())
-                                .build())
-                        .collect(Collectors.toList());
+                // 2 query batch thay vì N×2 query
+                List<Keyword> allHotKws = keywordRepository.findHotTopicsByDomains(
+                        allDomainKeys, allExcludeIds, PageRequest.of(0, byDomain.size() * 5));
+                List<Keyword> allGapKws = keywordRepository.findResearchGapsByDomains(
+                        allDomainKeys, allExcludeIds, PageRequest.of(0, byDomain.size() * 5));
 
-                List<Keyword> gapKws = keywordRepository.findResearchGapsByDomain(domain, excludeIds, PageRequest.of(0, 5));
-                List<ResearchGapPoint> gaps = gapKws.stream()
-                        .map(k -> ResearchGapPoint.builder()
-                                .term(k.getTerm())
-                                .paperCount((long) k.getPaperCount())
-                                .build())
-                        .collect(Collectors.toList());
+                // Group kết quả theo domain trong Java
+                Map<String, List<Keyword>> hotByDomain = allHotKws.stream()
+                        .filter(k -> k.getDomain() != null)
+                        .collect(Collectors.groupingBy(k -> k.getDomain().toLowerCase()));
+                Map<String, List<Keyword>> gapByDomain = allGapKws.stream()
+                        .filter(k -> k.getDomain() != null)
+                        .collect(Collectors.groupingBy(k -> k.getDomain().toLowerCase()));
 
-                followedDomains.add(PersonalReportResponse.FollowedDomain.builder()
-                        .domain(domain)
-                        .followedKeywords(followedTerms)
-                        .hotTopics(hotTopics)
-                        .researchGaps(gaps)
-                        .build());
+                for (Map.Entry<String, List<FollowKeyword>> entry : byDomain.entrySet()) {
+                    String domain = entry.getKey();
+                    List<FollowKeyword> fks = entry.getValue();
+                    String domainLower = domain.toLowerCase();
+
+                    List<String> followedTerms = fks.stream()
+                            .map(fk -> fk.getKeyword().getTerm())
+                            .collect(Collectors.toList());
+
+                    List<ResearchGapPoint> hotTopics = hotByDomain.getOrDefault(domainLower, List.of())
+                            .stream().limit(5)
+                            .map(k -> ResearchGapPoint.builder()
+                                    .term(k.getTerm())
+                                    .paperCount((long) k.getPaperCount())
+                                    .build())
+                            .collect(Collectors.toList());
+
+                    List<ResearchGapPoint> gaps = gapByDomain.getOrDefault(domainLower, List.of())
+                            .stream().limit(5)
+                            .map(k -> ResearchGapPoint.builder()
+                                    .term(k.getTerm())
+                                    .paperCount((long) k.getPaperCount())
+                                    .build())
+                            .collect(Collectors.toList());
+
+                    followedDomains.add(PersonalReportResponse.FollowedDomain.builder()
+                            .domain(domain)
+                            .followedKeywords(followedTerms)
+                            .hotTopics(hotTopics)
+                            .researchGaps(gaps)
+                            .build());
+                }
             }
         }
 

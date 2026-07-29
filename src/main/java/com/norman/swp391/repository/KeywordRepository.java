@@ -50,6 +50,30 @@ public interface KeywordRepository extends JpaRepository<Keyword, Long> {
             nativeQuery = true)
     java.util.List<String> findDistinctDomains();
 
+    /** Batch: hot topics cho nhiều domain cùng lúc — thay thế N lần gọi findHotTopicsByDomain. */
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT k FROM Keyword k
+        WHERE LOWER(k.domain) IN :domains
+          AND k.keywordId NOT IN :excludeIds
+        ORDER BY k.paperCount DESC
+        """)
+    List<Keyword> findHotTopicsByDomains(
+        @org.springframework.data.repository.query.Param("domains") java.util.Collection<String> domains,
+        @org.springframework.data.repository.query.Param("excludeIds") java.util.Collection<Long> excludeIds,
+        org.springframework.data.domain.Pageable pageable);
+
+    /** Batch: research gaps cho nhiều domain cùng lúc — thay thế N lần gọi findResearchGapsByDomain. */
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT k FROM Keyword k
+        WHERE LOWER(k.domain) IN :domains
+          AND k.keywordId NOT IN :excludeIds
+        ORDER BY k.paperCount ASC
+        """)
+    List<Keyword> findResearchGapsByDomains(
+        @org.springframework.data.repository.query.Param("domains") java.util.Collection<String> domains,
+        @org.springframework.data.repository.query.Param("excludeIds") java.util.Collection<Long> excludeIds,
+        org.springframework.data.domain.Pageable pageable);
+
     /** BR-35: gợi ý autocomplete theo term khớp gần đúng, ưu tiên keyword nhiều bài hơn. */
     @org.springframework.data.jpa.repository.Query("""
         SELECT k FROM Keyword k
