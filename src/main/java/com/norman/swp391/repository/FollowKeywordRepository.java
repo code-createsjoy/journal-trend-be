@@ -19,7 +19,8 @@ public interface FollowKeywordRepository extends JpaRepository<FollowKeyword, Lo
     @Query("SELECT fk FROM FollowKeyword fk WHERE fk.user.id = :userId AND fk.keyword.keywordId = :keywordId")
     Optional<FollowKeyword> findByUserIdAndKeywordId(@Param("userId") Long userId, @Param("keywordId") Long keywordId);
 
-    List<FollowKeyword> findByUserId(Long userId);
+    @Query("SELECT fk FROM FollowKeyword fk JOIN FETCH fk.keyword WHERE fk.user.id = :userId")
+    List<FollowKeyword> findByUserId(@Param("userId") Long userId);
 
     @Query("SELECT fk FROM FollowKeyword fk WHERE fk.keyword.keywordId = :keywordId")
     List<FollowKeyword> findByKeywordId(@Param("keywordId") Long keywordId);

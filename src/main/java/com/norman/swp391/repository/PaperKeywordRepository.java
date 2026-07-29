@@ -144,15 +144,15 @@ public interface PaperKeywordRepository extends JpaRepository<PaperKeyword, Long
             @Param("yearMonths") java.util.Collection<Integer> yearMonths);
 
     @Query("""
-        SELECT p.journal, COUNT(p)
+        SELECT p.journal, COUNT(DISTINCT p)
         FROM PaperKeyword pk
         JOIN pk.paper p
-        WHERE pk.keyword.domain IN :domains 
-          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE 
-          AND p.journal IS NOT NULL 
+        WHERE pk.keyword.domain IN :domains
+          AND p.status = com.norman.swp391.entity.enums.PaperStatus.ACTIVE
+          AND p.journal IS NOT NULL
           AND p.journal != ''
         GROUP BY p.journal
-        ORDER BY COUNT(p) DESC
+        ORDER BY COUNT(DISTINCT p) DESC
         """)
     List<Object[]> findTopJournalsByDomains(@Param("domains") java.util.Collection<String> domains, Pageable pageable);
 
