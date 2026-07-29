@@ -72,7 +72,7 @@ public class AiAnalysisServiceCollectionTest {
                 .email("ai-collection-test@example.com")
                 .password("password123")
                 .fullName("AI Collection Test User")
-                .role(UserRole.RESEARCHER)
+                .role(UserRole.USER)
                 .status(UserStatus.ACTIVE)
                 .enabled(true)
                 .verified(true)

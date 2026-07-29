@@ -1,9 +1,7 @@
 package com.norman.swp391.entity.enums;
 
 public enum UserRole {
-    STUDENT,
-    LECTURER,
-    RESEARCHER,
+    USER,
     ADMIN,
     SUPER_ADMIN
 }

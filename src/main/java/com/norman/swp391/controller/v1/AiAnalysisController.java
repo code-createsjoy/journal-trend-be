@@ -6,12 +6,14 @@ import com.norman.swp391.dto.request.ai.AiTopTrendsAnalysisRequest;
 import com.norman.swp391.dto.request.ai.AiTrendAnalysisRequest;
 import com.norman.swp391.dto.response.ai.AiAnalysisHistoryDetailResponse;
 import com.norman.swp391.dto.response.ai.AiAnalysisHistorySummaryResponse;
+import com.norman.swp391.dto.response.ai.AiCollectionAnalysisLimitResponse;
 import com.norman.swp391.dto.response.ai.AiCollectionAnalysisResponse;
 import com.norman.swp391.dto.response.ai.AiTopTrendsAnalysisResponse;
 import com.norman.swp391.dto.response.ai.AiTrendAnalysisResponse;
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.service.AiAnalysisHistoryService;
 import com.norman.swp391.service.AiAnalysisService;
+import com.norman.swp391.service.AiCollectionAnalysisSettingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -35,6 +37,15 @@ public class AiAnalysisController {
 
     private final AiAnalysisService aiAnalysisService;
     private final AiAnalysisHistoryService aiAnalysisHistoryService;
+    private final AiCollectionAnalysisSettingService aiCollectionAnalysisSettingService;
+
+    /** Cap hiện tại số paper/lượt phân tích AI collection — FE dùng để không hard-code 30, admin có thể đổi qua /admin/settings/ai-collection-analysis-limit. */
+    @GetMapping("/collection-analysis-limit")
+    public ApiResponse<AiCollectionAnalysisLimitResponse> getCollectionAnalysisLimit() {
+        return ApiResponse.ok(AiCollectionAnalysisLimitResponse.builder()
+                .maxPapers(aiCollectionAnalysisSettingService.getMaxPapers())
+                .build());
+    }
 
     /**
      * Phân tích xu hướng keyword bằng Groq AI.

@@ -1,7 +1,8 @@
-  # Tài Liệu Công Thức — Dự Báo Hot Topic Tương Lai (6 Tháng)
+  # Tài Liệu Công Thức — Dự Báo Hot Topic Tương Lai
 
 > **Dự án:** TrendSpark / JournalTrend  
-> **Mục tiêu:** Với mỗi keyword, tính điểm tiềm năng và dự báo số bài báo cho 6 tháng tới.  
+> **Mục tiêu:** Với mỗi keyword, dùng **6 tháng lịch sử đã chốt sổ** để tính điểm tiềm năng và dự báo số bài báo cho **tối đa 12 tháng tới**.  
+> **Lưu ý cửa sổ dữ liệu:** Chuỗi hồi quy chỉ dùng các tháng đã hoàn chỉnh — **tháng đang chạy bị loại** (khuyết ngày → điểm thấp giả, kéo lệch slope).  
 > **Lưu ý link:** Tất cả link Wikipedia và PDF truy cập miễn phí, không cần đăng nhập.
 
 ---
@@ -13,7 +14,7 @@
 [2] Acceleration     →  tốc độ tăng trưởng đang nhanh lên hay chậm lại?
 [3] Volume Score     →  keyword có đủ lớn để đáng dự báo không?
 [4] sTPS Score       →  xếp hạng tổng hợp (điểm tiềm năng 0-100)
-[5] Forecast 6M      →  dự báo số bài báo cho từng tháng trong 6 tháng tới
+[5] Forecast         →  dự báo số bài báo cho từng tháng (tối đa 12 tháng tới)
 ```
 
 ---
@@ -21,24 +22,28 @@
 ## Đầu Vào Chung
 
 ```
-Y   = [y_1, y_2, ..., y_12]   12 tháng lịch sử từ bảng publication_trends
-n   = 12                       số tháng
-x_i = i - 1                   chỉ số tháng: 0, 1, 2, ..., 11
+Y   = [y_1, y_2, ..., y_6]    tối đa 6 tháng lịch sử ĐÃ CHỐT SỔ từ bảng publication_trends
+n   = 6                        số tháng (tháng đang chạy đã bị loại)
+x_i = i - 1                   chỉ số tháng: 0, 1, 2, ..., 5
 ```
+
+> Cấu hình: `forecast-history-window = 6`, `forecast-min-months = 4` (keyword có < 4 tháng
+> dữ liệu sẽ không được dự báo). `n` có thể < 6 với keyword mới thêm — các công thức bên dưới
+> dùng `n` thực tế, các hằng số minh họa (S_xx…) tính theo n = 6.
 
 ---
 
 ## Công Thức 1 — OLS Slope (Tốc Độ Tăng Trưởng)
-<!-- Ý nghĩa: Tốc độ tăng trưởng trung bình của số bài báo qua 12 tháng. Là độ dốc của đường hồi quy tuyến tính (OLS) vẽ qua chuỗi lịch sử. -->
+<!-- Ý nghĩa: Tốc độ tăng trưởng trung bình của số bài báo qua 6 tháng. Là độ dốc của đường hồi quy tuyến tính (OLS) vẽ qua chuỗi lịch sử. -->
 
-**Mục đích:** Đo tốc độ tăng trưởng trung bình của số bài báo trên 12 tháng.  
+**Mục đích:** Đo tốc độ tăng trưởng trung bình của số bài báo trên 6 tháng.  
 **Lọc:** Nếu `Slope <= 0` → keyword đang giảm hoặc đứng yên → **loại, không dự báo**.
 
 ```
-x_bar = (0 + 1 + 2 + ... + 11) / 12  =  5.5
-y_bar = (y_1 + y_2 + ... + y_12) / 12
+x_bar = (0 + 1 + 2 + 3 + 4 + 5) / 6  =  2.5
+y_bar = (y_1 + y_2 + ... + y_6) / 6
 
-S_xx  = sum[(x_i - x_bar)^2]           =  143   (cố định khi n=12)
+S_xx  = sum[(x_i - x_bar)^2]           =  17.5   (cố định khi n=6)
 S_xy  = sum[(x_i - x_bar) * (y_i - y_bar)]
 
 Slope     = S_xy / S_xx
@@ -60,44 +65,49 @@ Intercept = y_bar - Slope * x_bar
 ## Công Thức 2 — Acceleration (Gia Tốc Tăng Trưởng)
 <!-- Ý nghĩa: So sánh tốc độ tăng 6 tháng cuối với 6 tháng đầu. Phát hiện keyword đang bùng nổ gần đây, không chỉ tăng đều. -->
 
-**Mục đích:** Phát hiện keyword đang **bùng nổ nhanh gần đây** — tốc độ tăng trưởng 6 tháng cuối cao hơn 6 tháng đầu.
+**Mục đích:** Phát hiện keyword đang **bùng nổ nhanh gần đây** — tốc độ tăng trưởng 3 tháng cuối cao hơn 3 tháng đầu.
 
-**Cách tính:** Chia chuỗi 12 tháng làm 2 nửa bằng nhau (6/6), tính slope riêng từng nửa.
+**Cách tính:** Chia chuỗi 6 tháng làm 2 nửa bằng nhau (3/3), tính slope riêng từng nửa.
 
 ```
---- Nửa trước: tháng 1-6 ---
-Y_prior      = [y_1, y_2, y_3, y_4, y_5, y_6]
-x_prior      = [0, 1, 2, 3, 4, 5]
+--- Nửa trước: tháng 1-3 ---
+Y_prior      = [y_1, y_2, y_3]
+x_prior      = [0, 1, 2]
 
-x_bar_prior  = 2.5
-S_xx_prior   = 17.5   (cố định: n=6, S_xx = 6*(36-1)/12 = 17.5)
-S_xy_prior   = sum[(x_i - 2.5) * (y_i - y_bar_prior)]  với i = 0..5
+x_bar_prior  = 1.0
+S_xx_prior   = 2.0   (cố định: n=3, S_xx = 3*(9-1)/12 = 2.0)
+S_xy_prior   = sum[(x_i - 1.0) * (y_i - y_bar_prior)]  với i = 0..2
 
-Slope_prior  = S_xy_prior / 17.5
+Slope_prior  = S_xy_prior / 2.0
 
 
---- Nửa sau: tháng 7-12 ---
-Y_recent     = [y_7, y_8, y_9, y_10, y_11, y_12]
-x_recent     = [0, 1, 2, 3, 4, 5]   (đặt lại chỉ số từ 0)
+--- Nửa sau: tháng 4-6 ---
+Y_recent     = [y_4, y_5, y_6]
+x_recent     = [0, 1, 2]   (đặt lại chỉ số từ 0)
 
-x_bar_recent = 2.5
-S_xx_recent  = 17.5   (cố định)
-S_xy_recent  = sum[(x_i - 2.5) * (y_i - y_bar_recent)]  với i = 0..5
+x_bar_recent = 1.0
+S_xx_recent  = 2.0   (cố định)
+S_xy_recent  = sum[(x_i - 1.0) * (y_i - y_bar_recent)]  với i = 0..2
 
-Slope_recent = S_xy_recent / 17.5
+Slope_recent = S_xy_recent / 2.0
 
 
 --- Gia tốc ---
 Acc = Slope_recent - Slope_prior
 ```
 
+> **Cảnh báo độ tin cậy:** với cửa sổ 6 tháng, mỗi nửa chỉ còn 3 điểm → slope từng nửa nhạy
+> nhiễu hơn. Vì vậy trọng số của Acc trong sTPS đã giảm còn **0.2** (xem Công thức 4), dồn
+> về Slope (0.6) ổn định hơn.
+
 **Giải thích:**
 - `Acc > 0` → keyword đang tăng nhanh hơn → tiềm năng cao
 - `Acc < 0` → keyword đang tăng chậm lại → tiềm năng giảm
 
-**Tại sao chia 6/6?**  
+**Tại sao chia 3/3?**  
 Chia đôi cân bằng (50/50) là nguyên tắc khách quan nhất.  
-Chia 9/3 cho nửa sau quá ít điểm (3 tháng), dễ bị nhiễu ngắn hạn.
+Chia lệch (vd 4/2) khiến một nửa quá ít điểm, càng dễ nhiễu. Với cửa sổ 6 tháng, 3/3 là
+lựa chọn cân bằng duy nhất hợp lý.
 
 ### Nguồn
 
@@ -191,16 +201,16 @@ Vol_norm(i)   = (Vol(i)   - Vol_min)   / (Vol_max   - Vol_min)
 ### Bước 4b: Điểm tổng hợp SAW (Simple Additive Weighting)
 
 ```
-sTPS(i) = ( Slope_norm(i) * 0.50
-          + Acc_norm(i)   * 0.30
+sTPS(i) = ( Slope_norm(i) * 0.60
+          + Acc_norm(i)   * 0.20
           + Vol_norm(i)   * 0.20 ) * 100
 ```
 
 **Trọng số:**
 
 ```
-Slope = 50%  →  tốc độ tăng trưởng dài hạn (quan trọng nhất)
-Acc   = 30%  →  đà tăng trưởng gần đây
+Slope = 60%  →  tốc độ tăng trưởng dài hạn (quan trọng nhất, ổn định nhất trên cửa sổ ngắn)
+Acc   = 20%  →  đà tăng trưởng gần đây (giảm từ 30% vì 3/3 nhiễu hơn)
 Vol   = 20%  →  quy mô nền tảng (tránh keyword quá nhỏ)
 ```
 
@@ -229,47 +239,51 @@ sTPS <  40  →  Tiềm năng thấp    (ẩn khỏi danh sách)
 
 ---
 
-## Công Thức 5 — Dự Báo 6 Tháng (Linear Forecast)
+## Công Thức 5 — Dự Báo (Linear Forecast, tối đa 12 tháng)
 
-**Mục đích:** Từ Slope và Intercept đã tính ở Công thức 1, ngoại suy 6 tháng tới.
+**Mục đích:** Từ Slope và Intercept đã tính ở Công thức 1, ngoại suy tối đa 12 tháng tới
+(`forecast-horizon = 12`).
+
+> ⚠️ **Lưu ý ngoại suy:** lịch sử chỉ 6 tháng (n = 6) nhưng dự báo tới 12 tháng → các tháng
+> xa (+7…+12) là ngoại suy vượt gấp đôi khoảng quan sát, độ tin cậy giảm dần. Nên coi các
+> tháng xa là ước lượng sơ bộ.
 
 ```
---- Dự báo tháng thứ m (m = 1, 2, 3, 4, 5, 6) ---
+--- Dự báo tháng thứ m (m = 1, 2, ..., 12) ---
 
-x_future(m) = (n - 1) + m  =  11 + m
+x_future(m) = (n - 1) + m  =  5 + m      (với n = 6)
 
 y_hat(m) = Slope * x_future(m) + Intercept
 
 y_hat(m) = max(0, y_hat(m))    -- không cho kết quả âm
 y_hat(m) = round(y_hat(m))     -- làm tròn về số nguyên
 ```
-<!-- Bước 1 — 12 tháng lịch sử được đánh số từ 0, không phải từ 1
+<!-- Bước 1 — 6 tháng lịch sử được đánh số từ 0, không phải từ 1
 Khi tính hồi quy OLS, mỗi tháng lịch sử được gán một chỉ số x, bắt đầu từ 0:
 
 
-Tháng lịch sử:   T1   T2   T3   T4   T5   T6   T7   T8   T9   T10  T11  T12
-Chỉ số x:         0    1    2    3    4    5    6    7    8    9    10   11 -->
+Tháng lịch sử:   T1   T2   T3   T4   T5   T6
+Chỉ số x:         0    1    2    3    4    5 -->
 
 <!-- x_future(m) là chỉ số (vị trí) của tháng tương lai thứ m trên trục thời gian — chính là giá trị x mà bạn thay vào phương trình đường thẳng để tính ra số bài báo.
 
 Định nghĩa
 
 x_future(m) = (n − 1) + m
-m = tháng dự báo thứ mấy (m = 1, 2, 3, 4, 5, 6)
-n = số tháng lịch sử (ví dụ n = 12)
+m = tháng dự báo thứ mấy (m = 1, 2, ..., 12)
+n = số tháng lịch sử (ví dụ n = 6)
 x_future(m) = tọa độ x của tháng đó trên trục thời gian đã đánh số từ 0 -->
 
-**Ví dụ với Slope = 3.5, Intercept = 10:**
+**Ví dụ với Slope = 3.5, Intercept = 10 (n = 6):**
 
 ```
-Tháng +1:  x=12  →  y_hat = 3.5 * 12 + 10 = 52  bài
-Tháng +2:  x=13  →  y_hat = 3.5 * 13 + 10 = 56  bài
-Tháng +3:  x=14  →  y_hat = 3.5 * 14 + 10 = 59  bài
-Tháng +4:  x=15  →  y_hat = 3.5 * 15 + 10 = 63  bài
-Tháng +5:  x=16  →  y_hat = 3.5 * 16 + 10 = 66  bài
-Tháng +6:  x=17  →  y_hat = 3.5 * 17 + 10 = 70  bài
-
-Tổng 6 tháng dự báo = 366 bài
+Tháng +1:  x=6   →  y_hat = 3.5 * 6  + 10 = 31  bài
+Tháng +2:  x=7   →  y_hat = 3.5 * 7  + 10 = 35  bài
+Tháng +3:  x=8   →  y_hat = 3.5 * 8  + 10 = 38  bài
+Tháng +4:  x=9   →  y_hat = 3.5 * 9  + 10 = 42  bài
+Tháng +5:  x=10  →  y_hat = 3.5 * 10 + 10 = 45  bài
+Tháng +6:  x=11  →  y_hat = 3.5 * 11 + 10 = 49  bài
+...  (tiếp tục tới Tháng +12: x=17 → y_hat = 70 bài)
 ```
 
 ### Nguồn
@@ -284,16 +298,16 @@ Tổng 6 tháng dự báo = 366 bài
 ## Luồng Tính Toán (Tóm Tắt)
 
 ```
-INPUT: Y = [y_1..y_12]  từ bảng publication_trends
+INPUT: Y = [y_1..y_6]  (6 tháng đã chốt sổ, bỏ tháng đang chạy) từ publication_trends
 
  ┌─────────────────────────────────────────────────────────┐
  │  VỚI TỪNG KEYWORD                                       │
  │                                                         │
- │  [1] Tính Slope từ toàn bộ 12 tháng                    │
+ │  [1] Tính Slope từ toàn bộ 6 tháng                     │
  │       → Nếu Slope <= 0: LOẠI keyword                   │
  │                                                         │
- │  [2] Tính Slope_prior  (tháng 1-6)                     │
- │      Tính Slope_recent (tháng 7-12)                    │
+ │  [2] Tính Slope_prior  (tháng 1-3)                     │
+ │      Tính Slope_recent (tháng 4-6)                     │
  │      Acc = Slope_recent - Slope_prior                   │
  │                                                         │
  │  [3] VolumeScore = ln(TotalPapers + 1)                 │
@@ -303,15 +317,15 @@ INPUT: Y = [y_1..y_12]  từ bảng publication_trends
  │  SAU KHI XỬ LÝ TẤT CẢ KEYWORD (tìm min/max toàn tập) │
  │                                                         │
  │  [4] Chuẩn hóa Min-Max cho Slope, Acc, Volume          │
- │      sTPS = (Slope_norm*0.5 + Acc_norm*0.3             │
+ │      sTPS = (Slope_norm*0.6 + Acc_norm*0.2             │
  │            + Vol_norm*0.2) * 100                       │
  └─────────────────────────────────────────────────────────┘
 
  ┌─────────────────────────────────────────────────────────┐
  │  VỚI TỪNG KEYWORD ĐÃ QUA LỌC                          │
  │                                                         │
- │  [5] y_hat(m) = Slope*(11+m) + Intercept , m=1..6     │
- │      predicted_total = sum(y_hat(1..6))                │
+ │  [5] y_hat(m) = Slope*(5+m) + Intercept , m=1..12     │
+ │      predicted_total = sum(y_hat(1..12))               │
  └─────────────────────────────────────────────────────────┘
 
 OUTPUT cho mỗi keyword:

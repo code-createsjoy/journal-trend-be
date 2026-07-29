@@ -2,16 +2,12 @@ package com.norman.swp391.controller.v1;
 
 import com.norman.swp391.dto.common.ApiResponse;
 import com.norman.swp391.dto.request.admin.PaperReviewOverrideRequest;
-import com.norman.swp391.dto.request.role.RoleRequestApproveRequest;
-import com.norman.swp391.dto.request.role.RoleRequestRejectRequest;
+import com.norman.swp391.dto.request.admin.UpdateAiCollectionAnalysisLimitRequest;
+import com.norman.swp391.dto.response.ai.AiCollectionAnalysisLimitResponse;
 import com.norman.swp391.dto.response.admin.PaperReviewResponse;
 import com.norman.swp391.dto.response.admin.SyncLogResponse;
-import com.norman.swp391.dto.response.role.RoleChangeLogResponse;
-import com.norman.swp391.dto.response.role.RoleUpgradeRequestResponse;
 import com.norman.swp391.entity.enums.PaperReviewStatus;
-import com.norman.swp391.entity.enums.RoleRequestStatus;
 import com.norman.swp391.service.PaperReviewService;
-import com.norman.swp391.service.RoleManagementService;
 import com.norman.swp391.dto.response.admin.TrendDemoStatsResponse;
 import com.norman.swp391.service.KeywordTrendService;
 import com.norman.swp391.service.TrendDemoStatsService;
@@ -20,6 +16,7 @@ import com.norman.swp391.dto.response.admin.UserAdminResponse;
 import com.norman.swp391.dto.response.common.PageResponse;
 import com.norman.swp391.entity.enums.SyncStatus;
 import com.norman.swp391.service.AdminService;
+import com.norman.swp391.service.AiCollectionAnalysisSettingService;
 import jakarta.validation.Valid;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +31,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -49,7 +47,7 @@ public class AdminController {
     private final PaperReviewService paperReviewService;
     private final KeywordTrendService keywordTrendService;
     private final TrendDemoStatsService trendDemoStatsService;
-    private final RoleManagementService roleManagementService;
+    private final AiCollectionAnalysisSettingService aiCollectionAnalysisSettingService;
 
     /**
      * Xử lý API triggerSync.
@@ -157,33 +155,13 @@ public class AdminController {
         return ApiResponse.ok(trendDemoStatsService.getStats());
     }
 
-    /** Danh sách đơn xin đổi role (mặc định PENDING). */
-    @GetMapping("/role-requests")
-    public ApiResponse<PageResponse<RoleUpgradeRequestResponse>> listRoleRequests(
-            @RequestParam(required = false, defaultValue = "PENDING") RoleRequestStatus status,
-            @PageableDefault(size = 20) Pageable pageable) {
-        return ApiResponse.ok(roleManagementService.listRequests(status, pageable));
-    }
-
-    /** Duyệt đơn xin đổi role: đổi role cho user, ghi nhật ký, gửi notification. */
-    @PostMapping("/role-requests/{requestId}/approve")
-    public ApiResponse<RoleUpgradeRequestResponse> approveRoleRequest(
-            @PathVariable Long requestId, @RequestBody(required = false) RoleRequestApproveRequest request) {
-        return ApiResponse.ok("Role request approved", roleManagementService.approve(requestId, request));
-    }
-
-    /** Từ chối đơn xin đổi role, kèm lý do chọn từ danh sách cố định (dropdown). */
-    @PostMapping("/role-requests/{requestId}/reject")
-    public ApiResponse<RoleUpgradeRequestResponse> rejectRoleRequest(
-            @PathVariable Long requestId, @Valid @RequestBody RoleRequestRejectRequest request) {
-        return ApiResponse.ok("Role request rejected", roleManagementService.reject(requestId, request));
-    }
-
-    /** Nhật ký các lần đổi role thành công, phục vụ kiểm toán. Có thể lọc theo targetUserId. */
-    @GetMapping("/role-logs")
-    public ApiResponse<PageResponse<RoleChangeLogResponse>> listRoleLogs(
-            @RequestParam(required = false) Long targetUserId, @PageableDefault(size = 20) Pageable pageable) {
-        return ApiResponse.ok(roleManagementService.listChangeLogs(targetUserId, pageable));
+    /** Đổi cap số paper/lượt phân tích AI collection (1-100), có hiệu lực ngay không cần redeploy. */
+    @PutMapping("/settings/ai-collection-analysis-limit")
+    public ApiResponse<AiCollectionAnalysisLimitResponse> updateAiCollectionAnalysisLimit(
+            @Valid @RequestBody UpdateAiCollectionAnalysisLimitRequest request) {
+        int updated = aiCollectionAnalysisSettingService.updateMaxPapers(request.getMaxPapers());
+        return ApiResponse.ok("AI collection analysis limit updated",
+                AiCollectionAnalysisLimitResponse.builder().maxPapers(updated).build());
     }
 }
 

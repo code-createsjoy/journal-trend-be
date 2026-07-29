@@ -49,7 +49,7 @@ public class SuperAdminServiceImpl implements SuperAdminService {
         if (user.getRole() == UserRole.SUPER_ADMIN) {
             throw new BadRequestException("Cannot revoke super admin role");
         }
-        user.setRole(UserRole.RESEARCHER);
+        user.setRole(UserRole.USER);
         return UserMapper.toAdminResponse(userRepository.save(user));
     }
 

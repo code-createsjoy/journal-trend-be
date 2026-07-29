@@ -85,7 +85,6 @@ public class HelixApiService {
                 .fullName(request.name())
                 .email(request.email())
                 .password(request.password())
-                .role(UserRole.RESEARCHER)
                 .build());
         return new HelixAuthSession(toHelixUser(user), null, null);
     }
@@ -285,7 +284,8 @@ public class HelixApiService {
      * Liệt kê các bài báo của một tác giả cụ thể.
      */
     public List<HelixPaper> listAuthorPapers(String authorId, Integer limit) {
-        var page = authorService.getPapersByAuthor(Long.parseLong(authorId), Pageable.unpaged());
+        int size = limit != null && limit > 0 ? Math.min(limit, 500) : 200;
+        var page = authorService.getPapersByAuthor(Long.parseLong(authorId), PageRequest.of(0, size));
         List<Long> paperIds = page.getContent().stream().map(PaperResponse::getId).toList();
         Map<Long, List<HelixAuthorRef>> refs = loadAuthorRefsByPaper(paperIds);
         Map<Long, PaperTopicMeta> topicMetaByPaper = loadPaperTopicMeta(paperIds);

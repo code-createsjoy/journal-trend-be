@@ -29,6 +29,7 @@ import com.norman.swp391.repository.PaperKeywordRepository;
 import com.norman.swp391.security.SecurityUtils;
 import com.norman.swp391.service.AiAnalysisHistoryService;
 import com.norman.swp391.service.AiAnalysisService;
+import com.norman.swp391.service.AiCollectionAnalysisSettingService;
 import com.norman.swp391.service.KeywordService;
 import com.norman.swp391.service.KeywordTrendService;
 import java.util.ArrayList;
@@ -63,6 +64,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
     private final CollectionPaperRepository collectionPaperRepository;
     private final PaperKeywordRepository paperKeywordRepository;
     private final PaperAuthorRepository paperAuthorRepository;
+    private final AiCollectionAnalysisSettingService aiCollectionAnalysisSettingService;
     @Qualifier("groqRestClient")
     private final RestClient groqRestClient;
 
@@ -383,7 +385,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
             throw new BadRequestException("Collection has no papers to analyze");
         }
 
-        int maxPapers = appProperties.getSync().getMaxPapersForCollectionAnalysis();
+        int maxPapers = aiCollectionAnalysisSettingService.getMaxPapers();
         List<Long> requestedIds = request != null ? request.getPaperIds() : null;
         List<Paper> analyzed;
         if (requestedIds != null && !requestedIds.isEmpty()) {
