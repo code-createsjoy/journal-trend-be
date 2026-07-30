@@ -509,15 +509,20 @@ public class PaperSyncServiceImpl implements PaperSyncService {
             sync.setEarlyStopTriggered(globalEarlyStopTriggered);
             syncLogRepository.save(sync);
 
-            // Evict dashboard summary cache upon sync end (both success and failure)
+            // Evict toàn bộ Spring cache khi sync kết thúc (cả thành công lẫn thất bại) — trend
+            // score/paperCount vừa tính lại còn nằm trong nhiều cache khác nhau (dashboardSummary,
+            // allKeywords, ...), không riêng dashboardSummary, nên phải xóa hết để FE luôn thấy
+            // số liệu mới nhất ngay sau sync thay vì đợi cache tự hết hạn.
             try {
-                var cache = cacheManager.getCache("dashboardSummary");
-                if (cache != null) {
-                    cache.clear();
-                    log.info("[SYNC] Dashboard summary cache evicted");
+                for (String cacheName : cacheManager.getCacheNames()) {
+                    var cache = cacheManager.getCache(cacheName);
+                    if (cache != null) {
+                        cache.clear();
+                    }
                 }
+                log.info("[SYNC] Evicted Spring caches: {}", cacheManager.getCacheNames());
             } catch (Exception e) {
-                log.error("[SYNC] Failed to evict dashboard cache", e);
+                log.error("[SYNC] Failed to evict Spring caches on sync completion", e);
             }
         }
     }
